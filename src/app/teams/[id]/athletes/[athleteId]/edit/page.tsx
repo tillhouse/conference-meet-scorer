@@ -35,19 +35,26 @@ const SWIMMING_EVENTS = [
   { name: "500 FR", label: "500 Free", placeholder: "e.g., 4:15.32" },
   { name: "1000 FR", label: "1000 Free", placeholder: "e.g., 9:05.00" },
   { name: "1650 FR", label: "1650 Free", placeholder: "e.g., 14:45.61" },
+  { name: "50 BK", label: "50 Back", placeholder: "e.g., 22.50" },
   { name: "100 BK", label: "100 Back", placeholder: "e.g., 46.84" },
   { name: "200 BK", label: "200 Back", placeholder: "e.g., 1:41.35" },
+  { name: "50 BR", label: "50 Breast", placeholder: "e.g., 25.20" },
   { name: "100 BR", label: "100 Breast", placeholder: "e.g., 53.50" },
   { name: "200 BR", label: "200 Breast", placeholder: "e.g., 1:57.65" },
+  { name: "50 FL", label: "50 Fly", placeholder: "e.g., 21.20" },
   { name: "100 FL", label: "100 Fly", placeholder: "e.g., 46.12" },
   { name: "200 FL", label: "200 Fly", placeholder: "e.g., 1:42.95" },
+  { name: "100 IM", label: "100 IM", placeholder: "e.g., 50.25" },
   { name: "200 IM", label: "200 IM", placeholder: "e.g., 1:45.44" },
   { name: "400 IM", label: "400 IM", placeholder: "e.g., 3:46.08" },
 ];
 
 const DIVING_EVENTS = [
-  { name: "1M", label: "1 Meter", placeholder: "e.g., 325.50" },
-  { name: "3M", label: "3 Meter", placeholder: "e.g., 350.25" },
+  { name: "1M (dual)", label: "1M (Dual)", placeholder: "e.g., 325.50" },
+  { name: "1M (champ)", label: "1M (Champ)", placeholder: "e.g., 325.50" },
+  { name: "3M (dual)", label: "3M (Dual)", placeholder: "e.g., 350.25" },
+  { name: "3M (champ)", label: "3M (Champ)", placeholder: "e.g., 350.25" },
+  { name: "Platform (champ)", label: "Platform (Champ)", placeholder: "e.g., 380.00" },
 ];
 
 const RELAY_SPLIT_EVENTS = [

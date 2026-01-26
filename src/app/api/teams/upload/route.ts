@@ -95,7 +95,8 @@ export async function POST(request: NextRequest) {
               // Determine event type
               const isDivingEvent =
                 eventData.eventName.includes("1M") ||
-                eventData.eventName.includes("3M");
+                eventData.eventName.includes("3M") ||
+                eventData.eventName.toLowerCase().includes("platform");
               const eventType = isDivingEvent ? "diving" : "individual";
 
               event = await prisma.event.create({
