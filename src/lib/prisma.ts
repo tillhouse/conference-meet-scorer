@@ -4,23 +4,14 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
-// Lazy initialization function
-function getPrismaClient(): PrismaClient {
-  if (globalForPrisma.prisma) {
-    return globalForPrisma.prisma;
-  }
-
-  const client = new PrismaClient({
+export const prisma =
+  globalForPrisma.prisma ??
+  new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
-
-  return client;
+if (process.env.NODE_ENV !== "production") {
+  globalForPrisma.prisma = prisma;
 }
 
-// Export a getter function instead of direct instance
-export const prisma = getPrismaClient();
 export default prisma;
