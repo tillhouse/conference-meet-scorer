@@ -2,37 +2,24 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import Database from "better-sqlite3";
 import path from "path";
-import { existsSync } from "fs";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
 function getDatabasePath(): string {
-  let databaseUrl = process.env.DATABASE_URL;
+  // Get DATABASE_URL from environment, default to dev.db
+  const databaseUrl = process.env.DATABASE_URL || "file:./dev.db";
   
-  // Default to dev.db in project root if not set
-  if (!databaseUrl) {
-    databaseUrl = "file:./dev.db";
-  }
-  
-  // Ensure it's a string
-  if (typeof databaseUrl !== "string") {
-    databaseUrl = "file:./dev.db";
-  }
-  
-  // Remove "file:" prefix if present
-  let filePath: string;
+  // Extract file path from "file:./dev.db" format
+  let filePath = databaseUrl;
   if (databaseUrl.startsWith("file:")) {
-    filePath = databaseUrl.replace("file:", "");
-  } else {
-    filePath = databaseUrl;
+    filePath = databaseUrl.substring(5); // Remove "file:" prefix
   }
   
-  // If it's a relative path, resolve it relative to the project root
-  if (filePath.startsWith("./") || (!path.isAbsolute(filePath) && !filePath.startsWith("/"))) {
-    const resolvedPath = path.join(process.cwd(), filePath.replace(/^\.\//, ""));
-    return resolvedPath;
+  // Resolve to absolute path
+  if (filePath.startsWith("./") || filePath.startsWith("../") || (!path.isAbsolute(filePath) && !filePath.startsWith("/"))) {
+    return path.resolve(process.cwd(), filePath);
   }
   
   return filePath;
@@ -40,19 +27,22 @@ function getDatabasePath(): string {
 
 let prisma: PrismaClient;
 
-try {
-  const dbPath = getDatabasePath();
-  const sqlite = new Database(dbPath);
-  const adapter = new PrismaBetterSqlite3(sqlite);
-  
-  prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
-  
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = prisma;
+if (globalForPrisma.prisma) {
+  prisma = globalForPrisma.prisma;
+} else {
+  try {
+    const dbPath = getDatabasePath();
+    const sqlite = new Database(dbPath);
+    const adapter = new PrismaBetterSqlite3(sqlite);
+    prisma = new PrismaClient({ adapter });
+    
+    if (process.env.NODE_ENV !== "production") {
+      globalForPrisma.prisma = prisma;
+    }
+  } catch (error) {
+    console.error("Failed to initialize Prisma client:", error);
+    throw new Error(`Failed to initialize Prisma: ${error instanceof Error ? error.message : String(error)}`);
   }
-} catch (error) {
-  console.error("Failed to initialize Prisma client:", error);
-  throw error;
 }
 
 export { prisma };
