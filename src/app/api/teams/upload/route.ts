@@ -52,18 +52,12 @@ export async function POST(request: NextRequest) {
     // Process each athlete
     for (const parsedAthlete of parsedAthletes) {
       try {
-        // Find or create athlete
+        // Find or create athlete (SQLite doesn't support case-insensitive, so we'll do exact match)
         let athlete = await prisma.athlete.findFirst({
           where: {
             teamId,
-            firstName: {
-              equals: parsedAthlete.firstName,
-              mode: "insensitive",
-            },
-            lastName: {
-              equals: parsedAthlete.lastName,
-              mode: "insensitive",
-            },
+            firstName: parsedAthlete.firstName,
+            lastName: parsedAthlete.lastName,
           },
         });
 
@@ -156,14 +150,18 @@ export async function POST(request: NextRequest) {
               eventsAdded++;
             }
           } catch (eventError) {
+            const errorMsg = eventError instanceof Error ? eventError.message : String(eventError);
+            console.error(`Event error for ${parsedAthlete.firstName} ${parsedAthlete.lastName} - ${eventData.eventName}:`, errorMsg);
             errors.push(
-              `Failed to process event ${eventData.eventName} for ${parsedAthlete.firstName} ${parsedAthlete.lastName}`
+              `Failed to process event ${eventData.eventName} for ${parsedAthlete.firstName} ${parsedAthlete.lastName}: ${errorMsg}`
             );
           }
         }
       } catch (athleteError) {
+        const errorMsg = athleteError instanceof Error ? athleteError.message : String(athleteError);
+        console.error(`Athlete error for ${parsedAthlete.firstName} ${parsedAthlete.lastName}:`, errorMsg);
         errors.push(
-          `Failed to process athlete ${parsedAthlete.firstName} ${parsedAthlete.lastName}`
+          `Failed to process athlete ${parsedAthlete.firstName} ${parsedAthlete.lastName}: ${errorMsg}`
         );
       }
     }
@@ -172,7 +170,7 @@ export async function POST(request: NextRequest) {
       success: true,
       athletesAdded,
       eventsAdded,
-      errors: errors.slice(0, 10), // Limit errors to first 10
+      errors: errors.slice(0, 20), // Show more errors for debugging
     });
   } catch (error) {
     console.error("CSV upload error:", error);
