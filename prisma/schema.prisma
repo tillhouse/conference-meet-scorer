@@ -94,6 +94,7 @@ model AthleteEvent {
   time       String  // Time as string "4:15.32" or diving score "325.50"
   timeSeconds Float  // Converted to seconds for sorting (or raw score for diving)
   isEntered  Boolean @default(false) // Is this event selected for the meet?
+  isRelaySplit Boolean @default(false) // Is this a relay split (flying start) vs individual event?
   source     String? // "csv_upload", "manual", "live_update"
   notes      String?
 
@@ -103,7 +104,7 @@ model AthleteEvent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([athleteId, eventId])
+  @@unique([athleteId, eventId, isRelaySplit])
   @@index([athleteId])
   @@index([eventId])
   @@index([timeSeconds])
