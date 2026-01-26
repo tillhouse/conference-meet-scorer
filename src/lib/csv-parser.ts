@@ -13,154 +13,136 @@ export interface ParsedAthlete {
 }
 
 /**
- * Parse CSV/TXT file content into athlete data
- * Supports multiple formats:
- * - Name, Event, Time
- * - Last, First, Event, Time
- * - Name, Year, Event, Time
- * - etc.
+ * Parse CSV file in the Princeton roster format:
+ * - First row: empty
+ * - Second row: headers (First Name, Last Name, Class Year, Swimmer or Diver, then event columns)
+ * - Subsequent rows: athlete data
  */
 export function parseCSV(content: string): ParsedAthlete[] {
-  const lines = content.split("\n").filter((line) => line.trim());
-  if (lines.length === 0) return [];
+  const lines = content.split("\n").map((line) => line.trim()).filter((line) => line.length > 0);
+  
+  if (lines.length < 2) return [];
 
-  // Try to detect header row
-  const firstLine = lines[0].toLowerCase();
-  const hasHeader =
-    firstLine.includes("name") ||
-    firstLine.includes("event") ||
-    firstLine.includes("time");
+  // Find the header row (should be row 1, but skip empty rows)
+  let headerRowIndex = -1;
+  let headerRow: string[] = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    const lowerLine = lines[i].toLowerCase();
+    if (lowerLine.includes("first name") && lowerLine.includes("last name")) {
+      headerRowIndex = i;
+      headerRow = lines[i].split(",").map((col) => col.trim());
+      break;
+    }
+  }
 
-  const dataLines = hasHeader ? lines.slice(1) : lines;
+  if (headerRowIndex === -1 || headerRow.length < 4) {
+    return [];
+  }
 
-  const athletesMap = new Map<string, ParsedAthlete>();
+  // Map header columns to indices
+  const firstNameIndex = headerRow.findIndex((h) => h.toLowerCase().includes("first name"));
+  const lastNameIndex = headerRow.findIndex((h) => h.toLowerCase().includes("last name"));
+  const classYearIndex = headerRow.findIndex((h) => h.toLowerCase().includes("class year") || h.toLowerCase().includes("year"));
+  const swimmerDiverIndex = headerRow.findIndex((h) => h.toLowerCase().includes("swimmer") || h.toLowerCase().includes("diver"));
+  
+  // Find event columns (everything after the first 4 columns that's not empty)
+  const eventColumns: { index: number; name: string }[] = [];
+  for (let i = Math.max(firstNameIndex, lastNameIndex, classYearIndex, swimmerDiverIndex) + 1; i < headerRow.length; i++) {
+    const header = headerRow[i].trim();
+    if (header && header.length > 0) {
+      eventColumns.push({ index: i, name: header });
+    }
+  }
 
-  for (const line of dataLines) {
-    if (!line.trim()) continue;
+  if (firstNameIndex === -1 || lastNameIndex === -1) {
+    return [];
+  }
 
-    // Try comma-separated first, then tab-separated
-    const parts = line.includes("\t")
-      ? line.split("\t").map((p) => p.trim())
-      : line.split(",").map((p) => p.trim());
+  const athletes: ParsedAthlete[] = [];
+  const currentYear = new Date().getFullYear();
 
-    if (parts.length < 3) continue;
+  // Process data rows (everything after header)
+  for (let i = headerRowIndex + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line || line.trim().length === 0) continue;
 
-    // Try to parse the line
-    // Common formats:
-    // 1. "Last, First", "Event", "Time"
-    // 2. "First Last", "Event", "Time"
-    // 3. "Last, First", "Year", "Event", "Time"
-    // 4. "Name", "Event", "Time", "Year", "Diver"
+    const parts = line.split(",").map((p) => p.trim());
 
-    let nameStr = parts[0];
+    // Skip rows that don't have at least first name and last name
+    if (parts.length <= Math.max(firstNameIndex, lastNameIndex)) continue;
+
+    const firstName = parts[firstNameIndex]?.trim();
+    const lastName = parts[lastNameIndex]?.trim();
+
+    if (!firstName || !lastName || firstName.length === 0 || lastName.length === 0) {
+      continue;
+    }
+
+    // Get class year and convert to FR/SO/JR/SR/GR format
     let year: string | undefined;
-    let isDiver = false;
-    let eventName = "";
-    let time = "";
-
-    // Check if name contains comma (Last, First format)
-    if (nameStr.includes(",")) {
-      const nameParts = nameStr.split(",").map((p) => p.trim());
-      if (nameParts.length >= 2) {
-        const lastName = nameParts[0];
-        const firstName = nameParts[1];
-        nameStr = `${firstName} ${lastName}`;
-      }
-    }
-
-    // Try to find event and time
-    // Look for time-like patterns (contains : or is a number)
-    for (let i = 1; i < parts.length; i++) {
-      const part = parts[i];
-      
-      // Check if this looks like a time/score
-      if (
-        part.includes(":") ||
-        (!isNaN(parseFloat(part)) && parseFloat(part) > 0)
-      ) {
-        time = part;
-        // Event should be before the time
-        if (i > 1) {
-          eventName = parts[i - 1];
-        } else if (parts.length > i + 1) {
-          eventName = parts[i - 1] || parts[0];
+    if (classYearIndex !== -1 && parts[classYearIndex]) {
+      const classYearStr = parts[classYearIndex].trim();
+      if (classYearStr) {
+        const classYear = parseInt(classYearStr);
+        if (!isNaN(classYear)) {
+          const yearsUntilGraduation = classYear - currentYear;
+          if (yearsUntilGraduation === 0) year = "SR";
+          else if (yearsUntilGraduation === 1) year = "JR";
+          else if (yearsUntilGraduation === 2) year = "SO";
+          else if (yearsUntilGraduation === 3) year = "FR";
+          else if (yearsUntilGraduation < 0) year = "GR";
+          else year = "FR"; // Default for future years
         }
-        break;
       }
     }
 
-    // If we didn't find event/time, try simpler pattern
-    if (!eventName || !time) {
-      if (parts.length >= 3) {
-        eventName = parts[1] || "";
-        time = parts[2] || "";
+    // Determine if diver
+    let isDiver = false;
+    if (swimmerDiverIndex !== -1 && parts[swimmerDiverIndex]) {
+      const swimmerDiver = parts[swimmerDiverIndex].toLowerCase().trim();
+      isDiver = swimmerDiver.includes("diver");
+    }
+
+    // Collect events with times
+    const events: { eventName: string; time: string; timeSeconds: number }[] = [];
+
+    for (const eventCol of eventColumns) {
+      if (eventCol.index < parts.length) {
+        const timeValue = parts[eventCol.index]?.trim();
+        
+        // Skip empty cells
+        if (!timeValue || timeValue.length === 0) continue;
+
+        // Skip if it's just a dash or other placeholder
+        if (timeValue === "-" || timeValue === "N/A" || timeValue === "NA") continue;
+
+        // Parse the time/score
+        const timeSeconds = parseTimeToSeconds(timeValue);
+        
+        // Only add if we got a valid time/score
+        if (timeSeconds > 0) {
+          events.push({
+            eventName: eventCol.name,
+            time: timeValue,
+            timeSeconds,
+          });
+        }
       }
     }
 
-    // Check for year (FR, SO, JR, SR, GR)
-    for (const part of parts) {
-      const upperPart = part.toUpperCase();
-      if (["FR", "SO", "JR", "SR", "GR", "FY", "SOPH", "JUNIOR", "SENIOR", "GRAD"].includes(upperPart)) {
-        year = upperPart;
-        break;
-      }
-    }
-
-    // Check for diver flag
-    for (const part of parts) {
-      const lowerPart = part.toLowerCase();
-      if (
-        lowerPart.includes("diver") ||
-        lowerPart.includes("dive") ||
-        lowerPart === "d"
-      ) {
-        isDiver = true;
-        break;
-      }
-    }
-
-    // If event name contains diving events, mark as diver
-    if (eventName && (eventName.includes("1M") || eventName.includes("3M"))) {
-      isDiver = true;
-    }
-
-    if (!eventName || !time) {
-      continue; // Skip invalid rows
-    }
-
-    // Parse name
-    const nameParts = nameStr.trim().split(/\s+/);
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
-
-    if (!firstName || !lastName) {
-      continue; // Skip rows without valid names
-    }
-
-    const key = `${firstName.toLowerCase()}_${lastName.toLowerCase()}`;
-
-    if (!athletesMap.has(key)) {
-      athletesMap.set(key, {
+    // If athlete has no events, still add them (they might be added later)
+    // But if they have events, definitely add them
+    if (events.length > 0 || firstName || lastName) {
+      athletes.push({
         firstName,
         lastName,
         year,
         isDiver,
-        events: [],
-      });
-    }
-
-    const athlete = athletesMap.get(key)!;
-    
-    // Add event if not already present
-    const timeSeconds = parseTimeToSeconds(time);
-    if (!athlete.events.some((e) => e.eventName === eventName)) {
-      athlete.events.push({
-        eventName,
-        time,
-        timeSeconds,
+        events,
       });
     }
   }
 
-  return Array.from(athletesMap.values());
+  return athletes;
 }
