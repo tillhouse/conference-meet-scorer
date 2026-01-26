@@ -207,7 +207,8 @@ export default function NewMeetPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to create meet");
+        const errorDetails = error.details ? `: ${JSON.stringify(error.details)}` : error.details ? `: ${error.details}` : "";
+        throw new Error((error.error || "Failed to create meet") + errorDetails);
       }
 
       const meet = await response.json();

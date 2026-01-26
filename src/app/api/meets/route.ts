@@ -28,12 +28,27 @@ export async function POST(request: NextRequest) {
     const data = createMeetSchema.parse(body);
 
     // Ensure all selected events exist in the database
-    const eventNames = data.eventIds.filter((id) => !id.includes("-")); // Filter out IDs that are actually names
+    // eventIds might be actual IDs or event names (if events don't exist yet)
+    const eventNames: string[] = [];
+    const eventIds: string[] = [];
+
+    // Separate IDs from names (IDs are typically longer and contain dashes, names are short like "50 FR")
+    for (const item of data.eventIds) {
+      if (item.length > 10 || item.includes("-")) {
+        // Likely an actual ID
+        eventIds.push(item);
+      } else {
+        // Likely an event name
+        eventNames.push(item);
+      }
+    }
+
+    // Find existing events by ID or name
     const existingEvents = await prisma.event.findMany({
       where: {
         OR: [
-          { id: { in: data.eventIds } },
-          { name: { in: eventNames } },
+          ...(eventIds.length > 0 ? [{ id: { in: eventIds } }] : []),
+          ...(eventNames.length > 0 ? [{ name: { in: eventNames } }] : []),
         ],
       },
     });
@@ -41,7 +56,7 @@ export async function POST(request: NextRequest) {
     const existingEventNames = new Set(existingEvents.map((e) => e.name));
     const existingEventIds = new Set(existingEvents.map((e) => e.id));
 
-    // Create missing events
+    // Create missing events (only those that are names and don't exist)
     const eventsToCreate = eventNames.filter((name) => !existingEventNames.has(name));
     if (eventsToCreate.length > 0) {
       await prisma.event.createMany({
@@ -61,8 +76,8 @@ export async function POST(request: NextRequest) {
     const allEvents = await prisma.event.findMany({
       where: {
         OR: [
-          { id: { in: data.eventIds.filter((id) => existingEventIds.has(id)) } },
-          { name: { in: eventNames } },
+          ...(eventIds.length > 0 ? [{ id: { in: eventIds } }] : []),
+          ...(eventNames.length > 0 ? [{ name: { in: eventNames } }] : []),
         ],
       },
     });
@@ -103,6 +118,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(meet, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error("Validation error:", error.errors);
       return NextResponse.json(
         { error: "Invalid data", details: error.errors },
         { status: 400 }
@@ -110,8 +126,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.error("Error creating meet:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to create meet" },
+      { error: "Failed to create meet", details: errorMessage },
       { status: 500 }
     );
   }
