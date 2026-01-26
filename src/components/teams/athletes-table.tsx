@@ -37,6 +37,7 @@ type AthleteWithEvents = {
     id: string;
     time: string;
     isEntered: boolean;
+    isRelaySplit: boolean;
     event: {
       id: string;
       name: string;
@@ -96,8 +97,10 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
         </TableHeader>
         <TableBody>
           {athletes.map((athlete) => {
-            const enteredEvents = athlete.eventTimes.filter((e) => e.isEntered);
-            const allEvents = athlete.eventTimes.length;
+            // Filter out relay splits from display (only show individual events)
+            const individualEvents = athlete.eventTimes.filter((e) => !e.isRelaySplit);
+            const enteredEvents = individualEvents.filter((e) => e.isEntered);
+            const allEvents = individualEvents.length;
 
             return (
               <TableRow key={athlete.id}>
@@ -121,7 +124,7 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                         </span>
                       )}
                     </span>
-                    {athlete.eventTimes.slice(0, 3).map((eventTime) => (
+                    {individualEvents.slice(0, 3).map((eventTime) => (
                       <span
                         key={eventTime.id}
                         className="text-xs text-slate-500"
@@ -129,9 +132,9 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                         {eventTime.event.name}: {eventTime.time}
                       </span>
                     ))}
-                    {athlete.eventTimes.length > 3 && (
+                    {individualEvents.length > 3 && (
                       <span className="text-xs text-slate-400">
-                        +{athlete.eventTimes.length - 3} more
+                        +{individualEvents.length - 3} more
                       </span>
                     )}
                   </div>
