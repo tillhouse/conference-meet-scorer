@@ -97,6 +97,43 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
     }
   };
 
+  const handleToggleType = async (athleteId: string, isCurrentlyDiver: boolean) => {
+    setTogglingId(athleteId);
+    try {
+      const response = await fetch(`/api/athletes/${athleteId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          isDiver: !isCurrentlyDiver,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update type");
+      }
+
+      // Update local state immediately
+      setAthletesList((prev) =>
+        prev.map((athlete) =>
+          athlete.id === athleteId
+            ? { ...athlete, isDiver: !athlete.isDiver }
+            : athlete
+        )
+      );
+
+      toast.success(
+        `Athlete changed to ${!isCurrentlyDiver ? "diver" : "swimmer"} successfully`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update type");
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleDelete = async (athleteId: string, athleteName: string) => {
     setDeletingId(athleteId);
     try {
@@ -153,8 +190,18 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                 </TableCell>
                 <TableCell>{athlete.year || "-"}</TableCell>
                 <TableCell>
-                  <Badge variant={athlete.isDiver ? "secondary" : "default"}>
-                    {athlete.isDiver ? "Diver" : "Swimmer"}
+                  <Badge
+                    variant={athlete.isDiver ? "secondary" : "default"}
+                    className={`cursor-pointer transition-opacity ${
+                      togglingId === athlete.id ? "opacity-50" : "hover:opacity-80"
+                    }`}
+                    onClick={() => handleToggleType(athlete.id, athlete.isDiver)}
+                  >
+                    {togglingId === athlete.id
+                      ? "Updating..."
+                      : athlete.isDiver
+                      ? "Diver"
+                      : "Swimmer"}
                   </Badge>
                 </TableCell>
                 <TableCell>
