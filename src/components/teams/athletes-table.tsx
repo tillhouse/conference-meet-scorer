@@ -13,6 +13,19 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit, Trash2 } from "lucide-react";
 import { formatName, formatSecondsToTime } from "@/lib/utils";
+import Link from "next/link";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 type AthleteWithEvents = {
   id: string;
   firstName: string;
@@ -37,7 +50,28 @@ interface AthletesTableProps {
 }
 
 export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDelete = async (athleteId: string, athleteName: string) => {
+    setDeletingId(athleteId);
+    try {
+      const response = await fetch(`/api/athletes/${athleteId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete athlete");
+      }
+
+      toast.success(`${athleteName} deleted successfully`);
+      // Refresh the page to show updated list
+      window.location.reload();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete athlete");
+      setDeletingId(null);
+    }
+  };
 
   if (athletes.length === 0) {
     return (
@@ -111,13 +145,40 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setEditingId(athlete.id)}
-                    >
-                      <Edit className="h-4 w-4" />
+                    <Button variant="ghost" size="icon" asChild>
+                      <Link href={`/teams/${teamId}/athletes/${athlete.id}/edit`}>
+                        <Edit className="h-4 w-4" />
+                      </Link>
                     </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          disabled={deletingId === athlete.id}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-600" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            This will permanently delete {formatName(athlete.firstName, athlete.lastName)} and all their event times.
+                            This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(athlete.id, formatName(athlete.firstName, athlete.lastName))}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </div>
                 </TableCell>
               </TableRow>
