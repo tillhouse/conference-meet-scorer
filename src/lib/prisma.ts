@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaBetterSQLite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import Database from "better-sqlite3";
 import path from "path";
 
@@ -24,7 +24,7 @@ function getDatabasePath(): string {
 }
 
 const sqlite = new Database(getDatabasePath());
-const adapter = new PrismaBetterSQLite3(sqlite);
+const adapter = new PrismaBetterSqlite3(sqlite);
 
 export const prisma = globalForPrisma.prisma ?? new PrismaClient({ adapter });
 
