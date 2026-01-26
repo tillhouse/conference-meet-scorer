@@ -54,6 +54,7 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [athletesList, setAthletesList] = useState(athletes);
+  const [expandedAthletes, setExpandedAthletes] = useState<Set<string>>(new Set());
 
   // Update local state when props change
   useEffect(() => {
@@ -215,7 +216,10 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                         </span>
                       )}
                     </span>
-                    {individualEvents.slice(0, 3).map((eventTime) => (
+                    {(expandedAthletes.has(athlete.id)
+                      ? individualEvents
+                      : individualEvents.slice(0, 3)
+                    ).map((eventTime) => (
                       <span
                         key={eventTime.id}
                         className="text-xs text-slate-500"
@@ -224,9 +228,24 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                       </span>
                     ))}
                     {individualEvents.length > 3 && (
-                      <span className="text-xs text-slate-400">
-                        +{individualEvents.length - 3} more
-                      </span>
+                      <button
+                        onClick={() => {
+                          setExpandedAthletes((prev) => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(athlete.id)) {
+                              newSet.delete(athlete.id);
+                            } else {
+                              newSet.add(athlete.id);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800 hover:underline text-left mt-1"
+                      >
+                        {expandedAthletes.has(athlete.id)
+                          ? "Show less"
+                          : `+${individualEvents.length - 3} more`}
+                      </button>
                     )}
                   </div>
                 </TableCell>
