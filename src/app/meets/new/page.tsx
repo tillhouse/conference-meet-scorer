@@ -56,6 +56,35 @@ interface Event {
   eventType: string;
 }
 
+// Standard swimming events that should always be available
+const STANDARD_SWIMMING_EVENTS = [
+  "50 FR",
+  "100 FR",
+  "200 FR",
+  "500 FR",
+  "1000 FR",
+  "1650 FR",
+  "50 BK",
+  "100 BK",
+  "200 BK",
+  "50 BR",
+  "100 BR",
+  "200 BR",
+  "50 FL",
+  "100 FL",
+  "200 FL",
+  "100 IM",
+  "200 IM",
+  "400 IM",
+];
+
+// Standard diving events
+const STANDARD_DIVING_EVENTS = [
+  "1M",
+  "3M",
+  "Platform",
+];
+
 export default function NewMeetPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -115,11 +144,29 @@ export default function NewMeetPage() {
   const scoringStartPoints = watch("scoringStartPoints");
   const relayMultiplier = watch("relayMultiplier");
 
-  // Filter events by type
-  const swimmingEvents = events.filter((e) => e.eventType === "individual");
-  const divingEvents = events.filter(
-    (e) => e.eventType === "diving" && (e.name.includes("(champ)") || e.name.toLowerCase().includes("platform"))
-  );
+  // Create event options from standard lists, matching with existing events if they exist
+  const swimmingEventOptions = STANDARD_SWIMMING_EVENTS.map((eventName) => {
+    const existingEvent = events.find((e) => e.name === eventName && e.eventType === "individual");
+    return {
+      id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
+      name: eventName,
+      eventType: "individual",
+      exists: !!existingEvent,
+    };
+  });
+
+  const divingEventOptions = STANDARD_DIVING_EVENTS.map((eventName) => {
+    // Check for exact match or variants like "1M (champ)", "1M (dual)"
+    const existingEvent = events.find(
+      (e) => e.eventType === "diving" && e.name.startsWith(eventName)
+    );
+    return {
+      id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
+      name: eventName,
+      eventType: "diving",
+      exists: !!existingEvent,
+    };
+  });
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -455,7 +502,7 @@ export default function NewMeetPage() {
             <div>
               <h3 className="font-semibold mb-2">Swimming Events</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto border rounded-lg p-4">
-                {swimmingEvents.map((event) => (
+                {swimmingEventOptions.map((event) => (
                   <div key={event.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`event-${event.id}`}
@@ -486,7 +533,7 @@ export default function NewMeetPage() {
               <div>
                 <h3 className="font-semibold mb-2">Diving Events</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-48 overflow-y-auto border rounded-lg p-4">
-                  {divingEvents.map((event) => (
+                  {divingEventOptions.map((event) => (
                     <div key={event.id} className="flex items-center space-x-2">
                       <Checkbox
                         id={`event-${event.id}`}

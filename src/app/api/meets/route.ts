@@ -27,6 +27,48 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const data = createMeetSchema.parse(body);
 
+    // Ensure all selected events exist in the database
+    const eventNames = data.eventIds.filter((id) => !id.includes("-")); // Filter out IDs that are actually names
+    const existingEvents = await prisma.event.findMany({
+      where: {
+        OR: [
+          { id: { in: data.eventIds } },
+          { name: { in: eventNames } },
+        ],
+      },
+    });
+
+    const existingEventNames = new Set(existingEvents.map((e) => e.name));
+    const existingEventIds = new Set(existingEvents.map((e) => e.id));
+
+    // Create missing events
+    const eventsToCreate = eventNames.filter((name) => !existingEventNames.has(name));
+    if (eventsToCreate.length > 0) {
+      await prisma.event.createMany({
+        data: eventsToCreate.map((name) => {
+          const isDivingEvent = name === "1M" || name === "3M" || name.toLowerCase().includes("platform");
+          return {
+            name,
+            fullName: name,
+            eventType: isDivingEvent ? "diving" : "individual",
+            sortOrder: 0,
+          };
+        }),
+      });
+    }
+
+    // Get all event IDs (both existing and newly created)
+    const allEvents = await prisma.event.findMany({
+      where: {
+        OR: [
+          { id: { in: data.eventIds.filter((id) => existingEventIds.has(id)) } },
+          { name: { in: eventNames } },
+        ],
+      },
+    });
+
+    const finalEventIds = allEvents.map((e) => e.id);
+
     // Create the meet
     const meet = await prisma.meet.create({
       data: {
@@ -46,7 +88,7 @@ export async function POST(request: NextRequest) {
         relayMultiplier: data.relayMultiplier,
         individualScoring: data.individualScoring,
         relayScoring: data.relayScoring,
-        selectedEvents: JSON.stringify(data.eventIds),
+        selectedEvents: JSON.stringify(finalEventIds),
       },
     });
 
