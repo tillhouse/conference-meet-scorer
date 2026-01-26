@@ -7,6 +7,7 @@ const updateAthleteSchema = z.object({
   lastName: z.string().min(1, "Last name is required").optional(),
   year: z.string().optional(),
   isDiver: z.boolean().optional(),
+  isEnabled: z.boolean().optional(),
 });
 
 export async function GET(
@@ -72,6 +73,7 @@ export async function PATCH(
         ...(data.lastName !== undefined && { lastName: data.lastName }),
         ...(data.year !== undefined && { year: data.year }),
         ...(data.isDiver !== undefined && { isDiver: data.isDiver }),
+        ...(data.isEnabled !== undefined && { isEnabled: data.isEnabled }),
       },
     });
 

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -66,6 +67,7 @@ const formSchema = z.object({
   lastName: z.string().min(1, "Last name is required"),
   year: z.string().optional(),
   isDiver: z.boolean().default(false),
+  isEnabled: z.boolean().default(true),
   events: z.record(z.string().optional()),
 });
 
@@ -77,6 +79,7 @@ interface AthleteData {
   lastName: string;
   year: string | null;
   isDiver: boolean;
+  isEnabled: boolean;
   eventTimes: {
     id: string;
     time: string;
@@ -111,6 +114,7 @@ export default function EditAthletePage() {
       lastName: "",
       year: undefined,
       isDiver: false,
+      isEnabled: true,
       events: {},
     },
   });
@@ -127,6 +131,7 @@ export default function EditAthletePage() {
         setValue("lastName", data.lastName);
         setValue("year", data.year || undefined);
         setValue("isDiver", data.isDiver);
+        setValue("isEnabled", data.isEnabled);
 
         // Load existing event times
         const events: Record<string, string> = {};
@@ -167,6 +172,7 @@ export default function EditAthletePage() {
           lastName: data.lastName,
           year: data.year,
           isDiver: data.isDiver,
+          isEnabled: data.isEnabled,
         }),
       });
 
@@ -358,6 +364,22 @@ export default function EditAthletePage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-slate-50">
+              <div className="space-y-0.5">
+                <Label htmlFor="isEnabled">Status</Label>
+                <p className="text-sm text-slate-600">
+                  {watch("isEnabled") 
+                    ? "Athlete is active and can be included in meet lineups"
+                    : "Athlete is inactive and will be excluded from meet lineups"}
+                </p>
+              </div>
+              <Switch
+                id="isEnabled"
+                checked={watch("isEnabled")}
+                onCheckedChange={(checked) => setValue("isEnabled", checked)}
+              />
             </div>
           </CardContent>
         </Card>
