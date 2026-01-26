@@ -1,0 +1,250 @@
+// Conference Meet Scorer - Database Schema
+// Swim meet scoring and lineup optimization
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ============================================
+// Conference & Teams
+// ============================================
+
+model Conference {
+  id        String   @id @default(cuid())
+  name      String   // "Ivy League", "Big Ten", etc.
+  shortName String?  // "IVY", "B1G"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teams Team[]
+  meets Meet[]
+}
+
+model Team {
+  id           String  @id @default(cuid())
+  name         String  // "Princeton", "Yale"
+  shortName    String? // "PRIN", "YALE"
+  primaryColor String? // Hex color code
+  secondaryColor String?
+  conferenceId String?
+
+  conference   Conference? @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
+  athletes     Athlete[]
+  meetTeams    MeetTeam[]
+  relayEntries RelayEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
+}
+
+// ============================================
+// Athletes & Their Events
+// ============================================
+
+model Athlete {
+  id        String  @id @default(cuid())
+  firstName String
+  lastName  String
+  teamId    String
+  year      String? // "FR", "SO", "JR", "SR", "GR"
+  isDiver   Boolean @default(false)
+  isEnabled Boolean @default(true) // Can be disabled from lineup
+
+  team          Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  eventTimes    AthleteEvent[]
+  meetLineups   MeetLineup[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([teamId])
+  @@index([lastName, firstName])
+}
+
+// Standard events in swimming/diving
+model Event {
+  id           String  @id @default(cuid())
+  name         String  // "500 FR", "200 IM", "1M", "3M"
+  fullName     String  // "500 Yard Freestyle", "200 Yard Individual Medley"
+  eventType    String  // "individual", "relay", "diving"
+  distance     Int?    // Distance in yards (null for diving)
+  stroke       String? // "FR", "BK", "BR", "FL", "IM" (null for diving)
+  sortOrder    Int     // For ordering events in the meet
+  
+  athleteEvents AthleteEvent[]
+  meetLineups   MeetLineup[]
+  relayEntries  RelayEntry[]
+
+  @@unique([name])
+  @@index([eventType])
+}
+
+// An athlete's time/score for a specific event
+model AthleteEvent {
+  id         String  @id @default(cuid())
+  athleteId  String
+  eventId    String
+  time       String  // Time as string "4:15.32" or diving score "325.50"
+  timeSeconds Float  // Converted to seconds for sorting (or raw score for diving)
+  isEntered  Boolean @default(false) // Is this event selected for the meet?
+  source     String? // "csv_upload", "manual", "live_update"
+  notes      String?
+
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([athleteId, eventId])
+  @@index([athleteId])
+  @@index([eventId])
+  @@index([timeSeconds])
+}
+
+// ============================================
+// Meets & Scoring
+// ============================================
+
+model Meet {
+  id           String   @id @default(cuid())
+  name         String   // "2025 Ivy League Championships"
+  date         DateTime?
+  location     String?
+  conferenceId String?
+  status       String   @default("draft") // "draft", "in_progress", "completed"
+  
+  // Scoring configuration
+  scoringType     String @default("championship") // "championship", "dual", "invitational"
+  maxIndivEvents  Int    @default(3)  // Max individual events per swimmer
+  maxRelays       Int    @default(4)  // Max relays per swimmer
+  maxDivingEvents Int    @default(2)  // Max diving events per diver
+  
+  // Scoring tables (JSON)
+  individualScoring String? // JSON: {"1": 32, "2": 28, ...}
+  relayScoring      String? // JSON: {"1": 64, "2": 56, ...}
+  divingScoring     String? // JSON for diving if different
+
+  conference   Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
+  meetTeams    MeetTeam[]
+  meetLineups  MeetLineup[]
+  relayEntries RelayEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([conferenceId])
+  @@index([status])
+}
+
+// Teams participating in a meet
+model MeetTeam {
+  id     String @id @default(cuid())
+  meetId String
+  teamId String
+  
+  // Pre-calculated scores for quick display
+  individualScore Float @default(0)
+  relayScore      Float @default(0)
+  divingScore     Float @default(0)
+  totalScore      Float @default(0)
+
+  meet Meet @relation(fields: [meetId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([meetId, teamId])
+  @@index([meetId])
+  @@index([teamId])
+}
+
+// Individual athlete entries in a meet event
+model MeetLineup {
+  id        String @id @default(cuid())
+  meetId    String
+  athleteId String
+  eventId   String
+  
+  // Seeded time (from AthleteEvent)
+  seedTime       String?
+  seedTimeSeconds Float?
+  
+  // Actual result (if meet is completed)
+  finalTime       String?
+  finalTimeSeconds Float?
+  place           Int?
+  points          Float?
+
+  meet    Meet    @relation(fields: [meetId], references: [id], onDelete: Cascade)
+  athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([meetId, athleteId, eventId])
+  @@index([meetId])
+  @@index([athleteId])
+  @@index([eventId])
+}
+
+// Relay entries for teams
+model RelayEntry {
+  id     String @id @default(cuid())
+  meetId String
+  teamId String
+  eventId String
+  
+  // Relay time
+  seedTime        String?
+  seedTimeSeconds Float?
+  
+  // Result
+  finalTime       String?
+  finalTimeSeconds Float?
+  place           Int?
+  points          Float?
+  
+  // Relay members (JSON array of athlete IDs)
+  members String? // JSON: ["athleteId1", "athleteId2", "athleteId3", "athleteId4"]
+
+  meet  Meet  @relation(fields: [meetId], references: [id], onDelete: Cascade)
+  team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([meetId, teamId, eventId])
+  @@index([meetId])
+  @@index([teamId])
+  @@index([eventId])
+}
+
+// ============================================
+// AI Chat & Strategy Sessions
+// ============================================
+
+model ChatSession {
+  id        String   @id @default(cuid())
+  meetId    String?  // Optional: linked to a specific meet
+  teamId    String?  // Optional: focused on a specific team
+  title     String?
+  
+  messages  ChatMessage[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ChatMessage {
+  id        String @id @default(cuid())
+  sessionId String
+  role      String // "user", "assistant"
+  content   String
+  
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
