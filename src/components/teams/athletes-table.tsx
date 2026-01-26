@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Table,
   TableBody,
@@ -52,6 +52,50 @@ interface AthletesTableProps {
 
 export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [athletesList, setAthletesList] = useState(athletes);
+
+  // Update local state when props change
+  useEffect(() => {
+    setAthletesList(athletes);
+  }, [athletes]);
+
+  const handleToggleStatus = async (athleteId: string, currentStatus: boolean) => {
+    setTogglingId(athleteId);
+    try {
+      const response = await fetch(`/api/athletes/${athleteId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          isEnabled: !currentStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to update status");
+      }
+
+      // Update local state immediately
+      setAthletesList((prev) =>
+        prev.map((athlete) =>
+          athlete.id === athleteId
+            ? { ...athlete, isEnabled: !athlete.isEnabled }
+            : athlete
+        )
+      );
+
+      toast.success(
+        `Athlete ${!currentStatus ? "activated" : "deactivated"} successfully`
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update status");
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   const handleDelete = async (athleteId: string, athleteName: string) => {
     setDeletingId(athleteId);
@@ -96,7 +140,7 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {athletes.map((athlete) => {
+          {athletesList.map((athlete) => {
             // Filter out relay splits from display (only show individual events)
             const individualEvents = athlete.eventTimes.filter((e) => !e.isRelaySplit);
             const enteredEvents = individualEvents.filter((e) => e.isEntered);
@@ -142,8 +186,16 @@ export function AthletesTable({ athletes, teamId }: AthletesTableProps) {
                 <TableCell>
                   <Badge
                     variant={athlete.isEnabled ? "default" : "outline"}
+                    className={`cursor-pointer transition-opacity ${
+                      togglingId === athlete.id ? "opacity-50" : "hover:opacity-80"
+                    }`}
+                    onClick={() => handleToggleStatus(athlete.id, athlete.isEnabled)}
                   >
-                    {athlete.isEnabled ? "Active" : "Disabled"}
+                    {togglingId === athlete.id
+                      ? "Updating..."
+                      : athlete.isEnabled
+                      ? "Active"
+                      : "Disabled"}
                   </Badge>
                 </TableCell>
                 <TableCell className="text-right">
