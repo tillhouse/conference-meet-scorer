@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // Parse time to seconds
     const timeSeconds = parseTimeToSeconds(data.time);
 
-    // Find or create athlete event
+    // Find or create athlete event (can have same event as both individual and relay split)
     const existingAthleteEvent = await prisma.athleteEvent.findFirst({
       where: {
         athleteId: athlete.id,
