@@ -444,11 +444,82 @@ export function ResultsViewer({
                 {swimmingEvents.map((event) => {
                   const lineups = lineupsByEvent[event.id] || [];
                   const sortedLineups = sortEventResults(lineups, "individual");
-                  // Similar structure as "all" tab but filtered
+
                   return (
                     <div key={event.id} className="border rounded-lg p-4">
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
-                      {/* Same results display as above */}
+                      {sortedLineups.length === 0 ? (
+                        <p className="text-slate-500 text-sm">No results yet</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {[1, 9, 17, 25].map((startPlace) => {
+                            const finalResults = sortedLineups.filter(
+                              (l) =>
+                                l.place &&
+                                l.place >= startPlace &&
+                                l.place < startPlace + 8
+                            );
+                            if (finalResults.length === 0) return null;
+
+                            const finalType = getFinalType(startPlace);
+                            const headerColor =
+                              startPlace === 1
+                                ? "bg-yellow-100 border-yellow-300"
+                                : startPlace === 9
+                                ? "bg-blue-100 border-blue-300"
+                                : startPlace === 17
+                                ? "bg-slate-100 border-slate-300"
+                                : "bg-gray-50 border-gray-200";
+
+                            return (
+                              <div key={startPlace} className="border rounded-lg">
+                                <div
+                                  className={`p-2 font-semibold text-sm ${headerColor} border-b`}
+                                >
+                                  {finalType} (Places {startPlace}-
+                                  {Math.min(startPlace + 7, meet.scoringPlaces)})
+                                </div>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Place</TableHead>
+                                      <TableHead>Athlete</TableHead>
+                                      <TableHead>Team</TableHead>
+                                      <TableHead className="text-right">Time</TableHead>
+                                      <TableHead className="text-right">Points</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {finalResults.map((lineup) => (
+                                      <TableRow key={lineup.id}>
+                                        <TableCell className="font-bold">
+                                          {lineup.place}
+                                          {lineup.place === 1 && " 🥇"}
+                                          {lineup.place === 2 && " 🥈"}
+                                          {lineup.place === 3 && " 🥉"}
+                                        </TableCell>
+                                        <TableCell>
+                                          {formatName(
+                                            lineup.athlete.firstName,
+                                            lineup.athlete.lastName
+                                          )}
+                                        </TableCell>
+                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {lineup.finalTime || lineup.seedTime || "N/A"}
+                                        </TableCell>
+                                        <TableCell className="text-right font-semibold">
+                                          {lineup.points || 0}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -460,11 +531,82 @@ export function ResultsViewer({
                 {divingEvents.map((event) => {
                   const lineups = lineupsByEvent[event.id] || [];
                   const sortedLineups = sortEventResults(lineups, "diving");
-                  // Similar structure
+
                   return (
                     <div key={event.id} className="border rounded-lg p-4">
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
-                      {/* Same results display */}
+                      {sortedLineups.length === 0 ? (
+                        <p className="text-slate-500 text-sm">No results yet</p>
+                      ) : (
+                        <div className="space-y-4">
+                          {[1, 9, 17, 25].map((startPlace) => {
+                            const finalResults = sortedLineups.filter(
+                              (l) =>
+                                l.place &&
+                                l.place >= startPlace &&
+                                l.place < startPlace + 8
+                            );
+                            if (finalResults.length === 0) return null;
+
+                            const finalType = getFinalType(startPlace);
+                            const headerColor =
+                              startPlace === 1
+                                ? "bg-yellow-100 border-yellow-300"
+                                : startPlace === 9
+                                ? "bg-blue-100 border-blue-300"
+                                : startPlace === 17
+                                ? "bg-slate-100 border-slate-300"
+                                : "bg-gray-50 border-gray-200";
+
+                            return (
+                              <div key={startPlace} className="border rounded-lg">
+                                <div
+                                  className={`p-2 font-semibold text-sm ${headerColor} border-b`}
+                                >
+                                  {finalType} (Places {startPlace}-
+                                  {Math.min(startPlace + 7, meet.scoringPlaces)})
+                                </div>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Place</TableHead>
+                                      <TableHead>Athlete</TableHead>
+                                      <TableHead>Team</TableHead>
+                                      <TableHead className="text-right">Score</TableHead>
+                                      <TableHead className="text-right">Points</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {finalResults.map((lineup) => (
+                                      <TableRow key={lineup.id}>
+                                        <TableCell className="font-bold">
+                                          {lineup.place}
+                                          {lineup.place === 1 && " 🥇"}
+                                          {lineup.place === 2 && " 🥈"}
+                                          {lineup.place === 3 && " 🥉"}
+                                        </TableCell>
+                                        <TableCell>
+                                          {formatName(
+                                            lineup.athlete.firstName,
+                                            lineup.athlete.lastName
+                                          )}
+                                        </TableCell>
+                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {lineup.finalTime || lineup.seedTime || "N/A"}
+                                        </TableCell>
+                                        <TableCell className="text-right font-semibold">
+                                          {lineup.points || 0}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -481,10 +623,43 @@ export function ResultsViewer({
                     if (!b.finalTimeSeconds) return -1;
                     return a.finalTimeSeconds - b.finalTimeSeconds;
                   });
+
                   return (
                     <div key={event.id} className="border rounded-lg p-4">
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
-                      {/* Same relay display as above */}
+                      {sortedRelays.length === 0 ? (
+                        <p className="text-slate-500 text-sm">No results yet</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Place</TableHead>
+                              <TableHead>Team</TableHead>
+                              <TableHead className="text-right">Time</TableHead>
+                              <TableHead className="text-right">Points</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {sortedRelays.map((relay, idx) => (
+                              <TableRow key={relay.id}>
+                                <TableCell className="font-bold">
+                                  {relay.place || idx + 1}
+                                  {relay.place === 1 && " 🥇"}
+                                  {relay.place === 2 && " 🥈"}
+                                  {relay.place === 3 && " 🥉"}
+                                </TableCell>
+                                <TableCell>{relay.team.name}</TableCell>
+                                <TableCell className="text-right font-mono">
+                                  {relay.finalTime || relay.seedTime || "N/A"}
+                                </TableCell>
+                                <TableCell className="text-right font-semibold">
+                                  {relay.points || 0}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
                     </div>
                   );
                 })}
