@@ -87,13 +87,12 @@ export async function POST(request: NextRequest) {
     const finalEventIds = allEvents.map((e) => e.id);
 
     // Create the meet
-    // Note: Temporarily excluding meetType until Prisma client is regenerated
     const meet = await prisma.meet.create({
       data: {
         name: data.name,
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
         location: data.location && data.location.trim() !== "" ? data.location : null,
-        // meetType: data.meetType, // Temporarily commented out - will add back after Prisma regenerate
+        meetType: data.meetType,
         maxAthletes: data.maxAthletes,
         diverRatio: data.diverRatio,
         divingIncluded: data.divingIncluded,
