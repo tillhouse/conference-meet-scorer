@@ -258,10 +258,23 @@ export async function POST(
     }
 
     if (lineupsToCreate.length > 0) {
-      await prisma.meetLineup.createMany({
-        data: lineupsToCreate,
-        skipDuplicates: true,
-      });
+      // Prisma 6 doesn't support skipDuplicates, so we'll create them individually
+      // and catch any unique constraint violations (duplicates)
+      for (const lineup of lineupsToCreate) {
+        try {
+          await prisma.meetLineup.create({
+            data: lineup,
+          });
+        } catch (error: any) {
+          // If it's a unique constraint violation, it's a duplicate - skip it
+          if (error?.code === 'P2002') {
+            console.warn(`[Lineup Save] Duplicate lineup skipped: ${lineup.athleteId}/${lineup.eventId}`);
+            continue;
+          }
+          // Otherwise, re-throw the error
+          throw error;
+        }
+      }
     }
 
     console.log(`Created ${lineupsToCreate.length} lineups, skipped ${skippedLineups.length}`);
