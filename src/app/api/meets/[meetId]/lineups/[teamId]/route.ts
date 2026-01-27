@@ -183,13 +183,17 @@ export async function POST(
 
     // Create new lineups
     const lineupsToCreate = [];
+    const skippedLineups: string[] = [];
+    
     for (const [athleteId, eventIds] of Object.entries(data.lineups)) {
       for (const eventId of eventIds) {
         const athlete = athletes.find((a) => a.id === athleteId);
         // Find event by ID or name
         const event = events.find((e) => e.id === eventId || e.name === eventId);
         if (!athlete || !event) {
-          console.warn(`Skipping lineup: athlete=${athleteId}, event=${eventId}, found=${!!athlete}, eventFound=${!!event}`);
+          const reason = !athlete ? "athlete not found" : "event not found";
+          skippedLineups.push(`${athleteId}/${eventId}: ${reason}`);
+          console.warn(`Skipping lineup: athlete=${athleteId}, event=${eventId}, reason=${reason}`);
           continue;
         }
 
@@ -215,13 +219,21 @@ export async function POST(
     if (lineupsToCreate.length > 0) {
       await prisma.meetLineup.createMany({
         data: lineupsToCreate,
+        skipDuplicates: true,
       });
+    }
+
+    console.log(`Created ${lineupsToCreate.length} lineups, skipped ${skippedLineups.length}`);
+    if (skippedLineups.length > 0) {
+      console.log("Skipped lineups:", skippedLineups);
     }
 
     return NextResponse.json({
       success: true,
       message: "Lineups saved successfully",
       count: lineupsToCreate.length,
+      skipped: skippedLineups.length,
+      skippedDetails: skippedLineups,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

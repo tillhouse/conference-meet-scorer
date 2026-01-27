@@ -173,7 +173,13 @@ export function LineupSelector({
         throw new Error(error.error || "Failed to save lineups");
       }
 
-      toast.success(`${team.name} lineups saved successfully`);
+      const result = await response.json();
+      if (result.skipped && result.skipped > 0) {
+        console.warn("Some lineups were skipped:", result.skippedDetails);
+        toast.warning(`${team.name} lineups saved, but ${result.skipped} entries were skipped. Check console for details.`);
+      } else {
+        toast.success(`${team.name} lineups saved successfully (${result.count} entries)`);
+      }
       // Update saved state
       setSavedLineups(JSON.parse(JSON.stringify(athleteLineups))); // Deep copy
     } catch (error) {
