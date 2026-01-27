@@ -44,10 +44,6 @@ export default async function MeetResultsPage({
           team: true,
           event: true,
         },
-        orderBy: [
-          { event: { sortOrder: "asc" } },
-          { finalTimeSeconds: "asc" },
-        ],
       },
     },
   });
@@ -80,6 +76,12 @@ export default async function MeetResultsPage({
   console.log("MeetLineups count:", meet.meetLineups.length);
   console.log("RelayEntries count:", meet.relayEntries.length);
   console.log("Selected events:", selectedEvents.length);
+  if (meet.meetLineups.length > 0) {
+    console.log("First lineup:", JSON.stringify(meet.meetLineups[0], null, 2));
+  }
+  if (meet.relayEntries.length > 0) {
+    console.log("First relay:", JSON.stringify(meet.relayEntries[0], null, 2));
+  }
 
   return (
     <div className="space-y-6">
@@ -106,6 +108,21 @@ export default async function MeetResultsPage({
           </Button>
         </div>
       </div>
+
+      {/* Debug Info */}
+      {process.env.NODE_ENV === "development" && (
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardHeader>
+            <CardTitle className="text-sm">Debug Info</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm">
+            <p>MeetLineups: {meet.meetLineups.length}</p>
+            <p>RelayEntries: {meet.relayEntries.length}</p>
+            <p>Selected Events: {selectedEvents.length}</p>
+            <p>Events Found: {events.length}</p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Results Viewer */}
       <ResultsViewer
