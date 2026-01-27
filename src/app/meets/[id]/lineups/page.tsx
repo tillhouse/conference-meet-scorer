@@ -1,0 +1,130 @@
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, ListChecks } from "lucide-react";
+import Link from "next/link";
+import { LineupSelector } from "@/components/meets/lineup-selector";
+
+export default async function MeetLineupsPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+
+  const meet = await prisma.meet.findUnique({
+    where: { id },
+    include: {
+      meetTeams: {
+        include: {
+          team: {
+            include: {
+              athletes: {
+                where: {
+                  isEnabled: true,
+                },
+                include: {
+                  eventTimes: {
+                    where: {
+                      isRelaySplit: false,
+                    },
+                    include: {
+                      event: true,
+                    },
+                  },
+                },
+                orderBy: [
+                  { lastName: "asc" },
+                  { firstName: "asc" },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!meet) {
+    notFound();
+  }
+
+  const selectedEvents = meet.selectedEvents
+    ? (JSON.parse(meet.selectedEvents) as string[])
+    : [];
+  const events = await prisma.event.findMany({
+    where: {
+      id: { in: selectedEvents },
+    },
+    orderBy: {
+      name: "asc",
+    },
+  });
+
+  const swimmingEvents = events.filter((e) => e.eventType === "individual");
+  const divingEvents = events.filter((e) => e.eventType === "diving");
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <Button variant="ghost" size="icon" asChild>
+          <Link href={`/meets/${id}/roster`}>
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+        </Button>
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900">Set Event Lineups</h1>
+          <p className="text-slate-600 mt-1">
+            Select which events each athlete will compete in for {meet.name}
+          </p>
+        </div>
+      </div>
+
+      {/* Constraints Info */}
+      <Card className="bg-blue-50 border-blue-200">
+        <CardHeader>
+          <CardTitle className="text-lg">Event Limits</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <div>
+            <strong>Swimmers:</strong> Max {meet.maxIndivEvents} individual events, Max {meet.maxRelays} relay events
+          </div>
+          <div>
+            <strong>Divers:</strong> Max {meet.maxDivingEvents} diving events
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Team Lineups */}
+      <div className="space-y-6">
+        {meet.meetTeams.map((meetTeam) => (
+          <LineupSelector
+            key={meetTeam.id}
+            meetId={id}
+            meetTeam={meetTeam}
+            team={meetTeam.team}
+            swimmingEvents={swimmingEvents}
+            divingEvents={divingEvents}
+            maxIndivEvents={meet.maxIndivEvents}
+            maxRelays={meet.maxRelays}
+            maxDivingEvents={meet.maxDivingEvents}
+          />
+        ))}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex justify-end gap-4 pt-4 border-t">
+        <Button variant="outline" asChild>
+          <Link href={`/meets/${id}/roster`}>Back</Link>
+        </Button>
+        <Button asChild>
+          <Link href={`/meets/${id}/relays`}>
+            Next: Create Relays
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
