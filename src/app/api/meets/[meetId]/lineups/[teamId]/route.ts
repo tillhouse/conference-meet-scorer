@@ -50,12 +50,21 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ meetId: string; teamId: string }> }
 ) {
+  let body: any = null;
   try {
     const { meetId, teamId } = await params;
-    const body = await request.json();
+    body = await request.json();
     
     console.log(`[Lineup Save] Received request for meet ${meetId}, team ${teamId}`);
     console.log(`[Lineup Save] Request body:`, JSON.stringify(body, null, 2));
+    console.log(`[Lineup Save] Request body type:`, typeof body);
+    console.log(`[Lineup Save] lineups type:`, typeof body?.lineups);
+    console.log(`[Lineup Save] lineups keys:`, body?.lineups ? Object.keys(body.lineups) : 'none');
+    if (body?.lineups) {
+      Object.entries(body.lineups).forEach(([key, value]) => {
+        console.log(`[Lineup Save]   ${key}:`, typeof value, Array.isArray(value) ? `array[${(value as any[]).length}]` : value);
+      });
+    }
     
     const data = saveLineupSchema.parse(body);
 

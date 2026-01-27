@@ -165,13 +165,22 @@ export function LineupSelector({
       });
 
       console.log("Saving lineups:", { lineups, athleteCount: Object.keys(lineups).length });
+      console.log("Lineups structure check:", {
+        isObject: typeof lineups === 'object',
+        keys: Object.keys(lineups),
+        firstValue: Object.values(lineups)[0],
+        firstValueIsArray: Array.isArray(Object.values(lineups)[0]),
+      });
+      
+      const payload = { lineups };
+      console.log("Payload to send:", JSON.stringify(payload, null, 2));
 
       const response = await fetch(`/api/meets/${meetId}/lineups/${meetTeam.teamId}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ lineups }),
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
