@@ -71,6 +71,7 @@ export function RelayCreator({
   maxRelays,
 }: RelayCreatorProps) {
   const [relayEntries, setRelayEntries] = useState<Record<string, RelayEntry>>({});
+  const [savedRelayEntries, setSavedRelayEntries] = useState<Record<string, RelayEntry>>({});
   const [correctionFactor, setCorrectionFactor] = useState(0.5);
   const [saving, setSaving] = useState(false);
 
@@ -102,6 +103,7 @@ export function RelayCreator({
             };
           });
           setRelayEntries(loaded);
+          setSavedRelayEntries(JSON.parse(JSON.stringify(loaded))); // Deep copy
           if (data.correctionFactor !== undefined) {
             setCorrectionFactor(data.correctionFactor);
           }
@@ -111,6 +113,13 @@ export function RelayCreator({
         // No existing relays
       });
   }, [meetId, meetTeam.teamId, relayEvents]);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    const current = JSON.stringify(relayEntries);
+    const saved = JSON.stringify(savedRelayEntries);
+    return current !== saved;
+  }, [relayEntries, savedRelayEntries]);
 
   // Get flat-start events for a specific leg based on stroke and distance
   const getFlatStartEvents = (stroke: string, distance: string) => {
@@ -296,12 +305,25 @@ export function RelayCreator({
       }
 
       toast.success(`${team.name} relays saved successfully`);
+      // Update saved state
+      setSavedRelayEntries(JSON.parse(JSON.stringify(relayEntries))); // Deep copy
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save relays");
     } finally {
       setSaving(false);
     }
   };
+
+  // Expose save function and unsaved state to parent
+  useEffect(() => {
+    (window as any)[`relayCreator_${meetTeam.teamId}`] = {
+      hasUnsavedChanges,
+      save: handleSave,
+    };
+    return () => {
+      delete (window as any)[`relayCreator_${meetTeam.teamId}`];
+    };
+  }, [hasUnsavedChanges, meetTeam.teamId]);
 
   return (
     <Card>

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
 import { RelayCreator } from "@/components/meets/relay-creator";
+import { RelayNavigation } from "@/components/meets/relay-navigation";
 
 // Standard relay events with their leg distances
 const RELAY_EVENTS = [
