@@ -496,7 +496,8 @@ export function RelayCreator({
                               stroke,
                               event.id,
                               entry.useRelaySplits[idx],
-                              entry.times[idx]
+                              entry.times[idx],
+                              event.distances[idx]
                             );
                             return time ? parseTimeToSeconds(time) : 0;
                           });
@@ -513,9 +514,10 @@ export function RelayCreator({
                           stroke,
                           event.id,
                           entry.useRelaySplits[idx],
-                          entry.times[idx]
+                          entry.times[idx],
+                          event.distances[idx]
                         );
-                        return `${stroke}: ${time || "N/A"}`;
+                        return `${event.distances[idx]} ${stroke}: ${time || "N/A"}`;
                       }).join(" • ")}
                     </div>
                   </div>
