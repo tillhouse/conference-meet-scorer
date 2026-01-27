@@ -6,13 +6,13 @@ import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
 import { RelayCreator } from "@/components/meets/relay-creator";
 
-// Standard relay events
+// Standard relay events with their leg distances
 const RELAY_EVENTS = [
-  { name: "200 MR", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"] },
-  { name: "200 FR", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
-  { name: "400 MR", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"] },
-  { name: "400 FR", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
-  { name: "800 FR", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
+  { name: "200 MR", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["50", "50", "50", "50"] },
+  { name: "200 FR", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["50", "50", "50", "50"] },
+  { name: "400 MR", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["100", "100", "100", "100"] },
+  { name: "400 FR", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["100", "100", "100", "100"] },
+  { name: "800 FR", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["200", "200", "200", "200"] },
 ];
 
 export default async function MeetRelaysPage({
@@ -92,18 +92,35 @@ export default async function MeetRelaysPage({
   // If no relay events in database, use the standard ones
   const relayEvents = events.length > 0 
     ? events.map((e) => {
-        // Determine legs based on event name
+        // Determine legs and distances based on event name
         let legs = ["FR", "FR", "FR", "FR"];
-        if (e.name.includes("MR") || e.name.includes("Medley")) {
+        let distances = ["100", "100", "100", "100"];
+        
+        if (e.name === "200 MR") {
           legs = ["BK", "BR", "FL", "FR"];
+          distances = ["50", "50", "50", "50"];
+        } else if (e.name === "400 MR") {
+          legs = ["BK", "BR", "FL", "FR"];
+          distances = ["100", "100", "100", "100"];
+        } else if (e.name === "200 FR") {
+          legs = ["FR", "FR", "FR", "FR"];
+          distances = ["50", "50", "50", "50"];
+        } else if (e.name === "400 FR") {
+          legs = ["FR", "FR", "FR", "FR"];
+          distances = ["100", "100", "100", "100"];
+        } else if (e.name === "800 FR") {
+          legs = ["FR", "FR", "FR", "FR"];
+          distances = ["200", "200", "200", "200"];
         }
-        return { ...e, legs };
+        
+        return { ...e, legs, distances };
       })
     : RELAY_EVENTS.map((re) => ({
         id: re.name,
         name: re.name,
         fullName: re.label,
         legs: re.legs,
+        distances: re.distances,
       }));
 
   return (

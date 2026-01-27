@@ -40,6 +40,7 @@ interface RelayEvent {
   name: string;
   fullName?: string;
   legs: string[]; // ["BK", "BR", "FL", "FR"] or ["FR", "FR", "FR", "FR"]
+  distances: string[]; // ["50", "50", "50", "50"] or ["100", "100", "100", "100"], etc.
 }
 
 interface MeetTeam {
@@ -111,23 +112,11 @@ export function RelayCreator({
       });
   }, [meetId, meetTeam.teamId, relayEvents]);
 
-  // Get flat-start events for first leg
-  const getFlatStartEvents = (stroke: string) => {
+  // Get flat-start events for a specific leg based on stroke and distance
+  const getFlatStartEvents = (stroke: string, distance: string) => {
     const events: { name: string; distance: string }[] = [];
-    if (stroke === "FR") {
-      events.push({ name: "50 FR", distance: "50" });
-      events.push({ name: "100 FR", distance: "100" });
-      events.push({ name: "200 FR", distance: "200" });
-    } else if (stroke === "BK") {
-      events.push({ name: "50 BK", distance: "50" });
-      events.push({ name: "100 BK", distance: "100" });
-    } else if (stroke === "BR") {
-      events.push({ name: "50 BR", distance: "50" });
-      events.push({ name: "100 BR", distance: "100" });
-    } else if (stroke === "FL") {
-      events.push({ name: "50 FL", distance: "50" });
-      events.push({ name: "100 FL", distance: "100" });
-    }
+    const eventName = `${distance} ${stroke}`;
+    events.push({ name: eventName, distance });
     return events;
   };
 
@@ -149,7 +138,8 @@ export function RelayCreator({
     stroke: string,
     eventId: string,
     useRelaySplit: boolean,
-    customTime: string | null
+    customTime: string | null,
+    distance: string
   ): string | null => {
     if (!athleteId) return null;
     if (customTime) return customTime;
@@ -157,9 +147,11 @@ export function RelayCreator({
     const entry = relayEntries[eventId];
     if (!entry) return null;
 
+    // Get the specific event for this leg (e.g., "50 FR", "100 BK")
+    const flatStartEvents = getFlatStartEvents(stroke, distance);
+
     if (legIndex === 0) {
       // First leg: use flat-start individual event
-      const flatStartEvents = getFlatStartEvents(stroke);
       for (const event of flatStartEvents) {
         const timeData = getAthleteTime(athleteId, event.name, false);
         if (timeData) {
@@ -170,8 +162,7 @@ export function RelayCreator({
     } else {
       // Other legs: use relay split OR flat-start minus correction
       if (useRelaySplit) {
-        // Try to find relay split
-        const flatStartEvents = getFlatStartEvents(stroke);
+        // Try to find relay split first
         for (const event of flatStartEvents) {
           const timeData = getAthleteTime(athleteId, event.name, true);
           if (timeData) {
@@ -188,7 +179,6 @@ export function RelayCreator({
         }
       } else {
         // Use flat-start minus correction
-        const flatStartEvents = getFlatStartEvents(stroke);
         for (const event of flatStartEvents) {
           const timeData = getAthleteTime(athleteId, event.name, false);
           if (timeData) {
@@ -254,7 +244,8 @@ export function RelayCreator({
             stroke,
             entry.eventId,
             entry.useRelaySplits[idx],
-            entry.times[idx]
+            entry.times[idx],
+            event.distances[idx]
           );
         });
 
@@ -374,13 +365,15 @@ export function RelayCreator({
                     const athleteId = entry.athletes[legIndex];
                     const customTime = entry.times[legIndex];
                     const useRelaySplit = entry.useRelaySplits[legIndex];
+                    const distance = event.distances[legIndex];
                     const calculatedTime = calculateLegTime(
                       athleteId,
                       legIndex,
                       stroke,
                       event.id,
                       useRelaySplit,
-                      customTime
+                      customTime,
+                      distance
                     );
 
                     return (
@@ -388,16 +381,16 @@ export function RelayCreator({
                         <div className="space-y-3">
                           <div>
                             <Label className="font-semibold">
-                              Leg {legIndex + 1} - {stroke}
+                              Leg {legIndex + 1} - {distance} {stroke}
                             </Label>
                             {legIndex === 0 && (
                               <p className="text-xs text-slate-500 mt-1">
-                                Flat-start time
+                                Flat-start time ({distance} {stroke})
                               </p>
                             )}
                             {legIndex > 0 && (
                               <p className="text-xs text-slate-500 mt-1">
-                                {useRelaySplit ? "Relay split" : `Flat-start - ${correctionFactor}s`}
+                                {useRelaySplit ? `Relay split (${distance} ${stroke})` : `Flat-start - ${correctionFactor}s (${distance} ${stroke})`}
                               </p>
                             )}
                           </div>
