@@ -2,12 +2,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Trophy, BarChart3 } from "lucide-react";
+import { ArrowLeft, Play, Trophy } from "lucide-react";
 import Link from "next/link";
-import { ResultsViewer } from "@/components/meets/results-viewer";
+import { SimulateMeetViewer } from "@/components/meets/simulate-meet-viewer";
 
-export default async function MeetResultsPage({
+export default async function SimulateMeetPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -34,10 +33,6 @@ export default async function MeetResultsPage({
           },
           event: true,
         },
-        orderBy: [
-          { event: { sortOrder: "asc" } },
-          { finalTimeSeconds: "asc" },
-        ],
       },
       relayEntries: {
         include: {
@@ -77,31 +72,23 @@ export default async function MeetResultsPage({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/meets/${id}`}>
+            <Link href={`/meets/${id}/results`}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">{meet.name} - Results</h1>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Simulate Meet - {meet.name}
+            </h1>
             <p className="text-slate-600 mt-1">
-              View event results, scores, and team standings
+              Project results based on seed times and view projected team standings
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button asChild>
-            <Link href={`/meets/${id}/simulate`}>
-              Simulate Meet
-            </Link>
-          </Button>
-          <Button variant="outline" disabled title="Coming soon - Enter real meet results">
-            Enter Real Results
-          </Button>
-        </div>
       </div>
 
-      {/* Results Viewer */}
-      <ResultsViewer
+      {/* Simulate Meet Viewer */}
+      <SimulateMeetViewer
         meet={meet}
         events={events}
         individualScoring={individualScoring}

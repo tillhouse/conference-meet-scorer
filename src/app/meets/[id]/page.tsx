@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, MapPin, Users, Trophy, Settings, ListChecks } from "lucide-react";
+import { Calendar, MapPin, Users, Trophy, Settings, ListChecks, UsersRound } from "lucide-react";
 import Link from "next/link";
 
 export default async function MeetDetailPage({
@@ -111,8 +111,20 @@ export default async function MeetDetailPage({
                   Set Lineups
                 </Link>
               </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/meets/${id}/relays`}>
+                  <UsersRound className="h-4 w-4 mr-2" />
+                  Create Relays
+                </Link>
+              </Button>
             </>
           )}
+          <Button variant="outline" asChild>
+            <Link href={`/meets/${id}/results`}>
+              <Trophy className="h-4 w-4 mr-2" />
+              View Results
+            </Link>
+          </Button>
         </div>
       </div>
 
