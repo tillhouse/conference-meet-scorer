@@ -97,6 +97,12 @@ export default async function MeetDetailPage({
               Edit
             </Link>
           </Button>
+          <Button asChild>
+            <Link href={`/meets/${id}/roster`}>
+              <Users className="h-4 w-4 mr-2" />
+              Set Rosters
+            </Link>
+          </Button>
         </div>
       </div>
 
