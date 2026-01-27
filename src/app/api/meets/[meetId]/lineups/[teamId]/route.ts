@@ -53,6 +53,10 @@ export async function POST(
   try {
     const { meetId, teamId } = await params;
     const body = await request.json();
+    
+    console.log(`[Lineup Save] Received request for meet ${meetId}, team ${teamId}`);
+    console.log(`[Lineup Save] Request body:`, JSON.stringify(body, null, 2));
+    
     const data = saveLineupSchema.parse(body);
 
     // Verify meet exists
@@ -248,8 +252,13 @@ export async function POST(
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
+      console.error(`[Lineup Save] Validation error:`, error.errors);
       return NextResponse.json(
-        { error: "Invalid data", details: error.errors },
+        { 
+          error: "Invalid data", 
+          details: error.errors,
+          received: body,
+        },
         { status: 400 }
       );
     }
