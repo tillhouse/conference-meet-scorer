@@ -88,8 +88,8 @@ export async function POST(request: NextRequest) {
     const meet = await prisma.meet.create({
       data: {
         name: data.name,
-        date: data.date ? new Date(data.date) : null,
-        location: data.location,
+        date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
+        location: data.location && data.location.trim() !== "" ? data.location : null,
         meetType: data.meetType,
         maxAthletes: data.maxAthletes,
         diverRatio: data.diverRatio,
