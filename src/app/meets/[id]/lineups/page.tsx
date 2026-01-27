@@ -46,6 +46,25 @@ export default async function MeetLineupsPage({
     },
   });
 
+  // Filter athletes to only show those selected in the roster
+  if (meet) {
+    meet.meetTeams = meet.meetTeams.map((meetTeam) => {
+      const selectedAthleteIds = meetTeam.selectedAthletes
+        ? (JSON.parse(meetTeam.selectedAthletes) as string[])
+        : [];
+      
+      return {
+        ...meetTeam,
+        team: {
+          ...meetTeam.team,
+          athletes: meetTeam.team.athletes.filter((athlete) =>
+            selectedAthleteIds.includes(athlete.id)
+          ),
+        },
+      };
+    });
+  }
+
   if (!meet) {
     notFound();
   }

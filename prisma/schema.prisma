@@ -168,6 +168,9 @@ model MeetTeam {
   meetId String
   teamId String
   
+  // Roster selection (JSON array of athlete IDs)
+  selectedAthletes String? // JSON: ["athleteId1", "athleteId2", ...]
+  
   // Pre-calculated scores for quick display
   individualScore Float @default(0)
   relayScore      Float @default(0)

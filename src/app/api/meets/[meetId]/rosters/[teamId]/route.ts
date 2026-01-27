@@ -13,22 +13,28 @@ export async function GET(
   try {
     const { meetId, teamId } = await params;
 
-    // Get athletes that are already in the meet lineup for this team
-    const lineups = await prisma.meetLineup.findMany({
+    // Get the saved roster from MeetTeam
+    const meetTeam = await prisma.meetTeam.findUnique({
       where: {
-        meetId,
-        athlete: {
+        meetId_teamId: {
+          meetId,
           teamId,
         },
       },
-      select: {
-        athleteId: true,
-      },
-      distinct: ["athleteId"],
     });
 
+    if (!meetTeam) {
+      return NextResponse.json({
+        athleteIds: [],
+      });
+    }
+
+    const athleteIds = meetTeam.selectedAthletes
+      ? (JSON.parse(meetTeam.selectedAthletes) as string[])
+      : [];
+
     return NextResponse.json({
-      athleteIds: lineups.map((l) => l.athleteId),
+      athleteIds,
     });
   } catch (error) {
     console.error("Error fetching roster:", error);
@@ -105,13 +111,22 @@ export async function POST(
       );
     }
 
-    // For now, we'll just store this in the meetLineup table when events are selected
-    // The roster selection is more of a UI state - we'll persist it when lineups are set
-    // This endpoint is mainly for validation and future roster storage
+    // Save the roster selection to MeetTeam
+    await prisma.meetTeam.update({
+      where: {
+        meetId_teamId: {
+          meetId,
+          teamId,
+        },
+      },
+      data: {
+        selectedAthletes: JSON.stringify(data.athleteIds),
+      },
+    });
 
     return NextResponse.json({
       success: true,
-      message: "Roster validated successfully",
+      message: "Roster saved successfully",
       rosterCount: rosterCount.toFixed(2),
     });
   } catch (error) {
