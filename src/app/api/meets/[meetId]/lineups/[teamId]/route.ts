@@ -83,14 +83,63 @@ export async function POST(
       );
     }
 
-    const selectedEvents = meet.selectedEvents
-      ? (JSON.parse(meet.selectedEvents) as string[])
-      : [];
+    // Get all events that are being used (not just selected events)
+    const allEventIds = new Set<string>();
+    Object.values(data.lineups).forEach((eventIds) => {
+      eventIds.forEach((eventId) => allEventIds.add(eventId));
+    });
+
+    // Fetch all events being used
     const events = await prisma.event.findMany({
       where: {
-        id: { in: selectedEvents },
+        id: { in: Array.from(allEventIds) },
       },
     });
+
+    // Create any missing events
+    const missingEventIds = Array.from(allEventIds).filter(
+      (id) => !events.some((e) => e.id === id)
+    );
+    if (missingEventIds.length > 0) {
+      // Try to find events by name if they exist
+      const eventsByName = await prisma.event.findMany({
+        where: {
+          name: { in: missingEventIds },
+        },
+      });
+
+      // Create any events that still don't exist
+      const eventsToCreate = missingEventIds
+        .filter((id) => !eventsByName.some((e) => e.name === id))
+        .map((name) => ({
+          name,
+          fullName: name,
+          eventType: name.includes("Relay") || name.includes("MR") || name.includes("FR")
+            ? "relay"
+            : name.includes("1M") || name.includes("3M") || name.includes("Platform")
+            ? "diving"
+            : "individual",
+          sortOrder: 0,
+        }));
+
+      if (eventsToCreate.length > 0) {
+        await prisma.event.createMany({
+          data: eventsToCreate,
+          skipDuplicates: true,
+        });
+      }
+
+      // Fetch all events again including newly created ones
+      const allEvents = await prisma.event.findMany({
+        where: {
+          OR: [
+            { id: { in: Array.from(allEventIds) } },
+            { name: { in: Array.from(allEventIds) } },
+          ],
+        },
+      });
+      events.push(...allEvents.filter((e) => !events.some((ex) => ex.id === e.id)));
+    }
 
     // Validate event limits for each athlete
     for (const [athleteId, eventIds] of Object.entries(data.lineups)) {
@@ -137,8 +186,12 @@ export async function POST(
     for (const [athleteId, eventIds] of Object.entries(data.lineups)) {
       for (const eventId of eventIds) {
         const athlete = athletes.find((a) => a.id === athleteId);
-        const event = events.find((e) => e.id === eventId);
-        if (!athlete || !event) continue;
+        // Find event by ID or name
+        const event = events.find((e) => e.id === eventId || e.name === eventId);
+        if (!athlete || !event) {
+          console.warn(`Skipping lineup: athlete=${athleteId}, event=${eventId}, found=${!!athlete}, eventFound=${!!event}`);
+          continue;
+        }
 
         // Get athlete's time for this event
         const athleteEvent = await prisma.athleteEvent.findFirst({
