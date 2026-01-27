@@ -179,7 +179,7 @@ export default async function MeetRelaysPage({
         </Button>
         <Button asChild>
           <Link href={`/meets/${id}/results`}>
-            Next: Enter Results
+            View Results & Standings
           </Link>
         </Button>
       </div>
