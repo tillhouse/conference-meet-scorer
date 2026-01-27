@@ -156,8 +156,30 @@ export function ResultsViewer({
     relaysByEvent[relay.eventId].push(relay);
   });
 
+  // Get all unique event IDs from lineups and relays
+  const lineupEventIds = new Set(meet.meetLineups.map((l) => l.eventId));
+  const relayEventIds = new Set(meet.relayEntries.map((r) => r.eventId));
+  const allEventIds = new Set([...lineupEventIds, ...relayEventIds]);
+
+  // Get events from database for all event IDs (not just selected)
+  const allEventsMap = new Map(events.map((e) => [e.id, e]));
+  
+  // Add events from lineups/relays that might not be in selectedEvents
+  meet.meetLineups.forEach((lineup) => {
+    if (lineup.event && !allEventsMap.has(lineup.eventId)) {
+      allEventsMap.set(lineup.eventId, lineup.event);
+    }
+  });
+  meet.relayEntries.forEach((relay) => {
+    if (relay.event && !allEventsMap.has(relay.eventId)) {
+      allEventsMap.set(relay.eventId, relay.event);
+    }
+  });
+
+  const allEvents = Array.from(allEventsMap.values());
+
   // Sort events by type and name
-  const sortedEvents = [...events].sort((a, b) => {
+  const sortedEvents = [...allEvents].sort((a, b) => {
     if (a.eventType !== b.eventType) {
       if (a.eventType === "individual") return -1;
       if (b.eventType === "individual") return 1;
