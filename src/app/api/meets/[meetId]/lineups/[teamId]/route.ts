@@ -89,12 +89,17 @@ export async function POST(
       eventIds.forEach((eventId) => allEventIds.add(eventId));
     });
 
+    console.log(`[Lineup Save] Received ${Object.keys(data.lineups).length} athletes with lineups`);
+    console.log(`[Lineup Save] Unique event IDs requested:`, Array.from(allEventIds));
+
     // Fetch all events being used
     const events = await prisma.event.findMany({
       where: {
         id: { in: Array.from(allEventIds) },
       },
     });
+
+    console.log(`[Lineup Save] Found ${events.length} events in database:`, events.map(e => ({ id: e.id, name: e.name })));
 
     // Create any missing events
     const missingEventIds = Array.from(allEventIds).filter(
@@ -185,15 +190,21 @@ export async function POST(
     const lineupsToCreate = [];
     const skippedLineups: string[] = [];
     
+    console.log(`[Lineup Save] Processing ${Object.keys(data.lineups).length} athletes`);
+    
     for (const [athleteId, eventIds] of Object.entries(data.lineups)) {
+      const athlete = athletes.find((a) => a.id === athleteId);
+      if (!athlete) {
+        console.warn(`[Lineup Save] Athlete ${athleteId} not found in team`);
+        continue;
+      }
+      
       for (const eventId of eventIds) {
-        const athlete = athletes.find((a) => a.id === athleteId);
         // Find event by ID or name
         const event = events.find((e) => e.id === eventId || e.name === eventId);
-        if (!athlete || !event) {
-          const reason = !athlete ? "athlete not found" : "event not found";
-          skippedLineups.push(`${athleteId}/${eventId}: ${reason}`);
-          console.warn(`Skipping lineup: athlete=${athleteId}, event=${eventId}, reason=${reason}`);
+        if (!event) {
+          skippedLineups.push(`${athlete.firstName} ${athlete.lastName}/${eventId}: event not found`);
+          console.warn(`[Lineup Save] Event not found: ${eventId} (available events: ${events.map(e => e.id).join(', ')})`);
           continue;
         }
 
