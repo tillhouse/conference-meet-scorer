@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Trophy, BarChart3 } from "lucide-react";
 import Link from "next/link";
 import { ResultsViewer } from "@/components/meets/results-viewer";
+import { DebugInfo } from "@/components/meets/debug-info";
 
 export default async function MeetResultsPage({
   params,
@@ -110,29 +111,13 @@ export default async function MeetResultsPage({
       </div>
 
       {/* Debug Info */}
-      <Card className="bg-yellow-50 border-yellow-200">
-        <CardHeader>
-          <CardTitle className="text-sm">Debug Info</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm space-y-2">
-          <p>MeetLineups: {meet.meetLineups.length}</p>
-          <p>RelayEntries: {meet.relayEntries.length}</p>
-          <p>Selected Events: {selectedEvents.length}</p>
-          <p>Events Found: {events.length}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={async () => {
-              const response = await fetch(`/api/meets/${id}/debug`);
-              const data = await response.json();
-              console.log("Full debug data:", data);
-              alert(`Check console (F12) for full debug data.\n\nLineups: ${data.meetLineupsCount}\nRelays: ${data.relayEntriesCount}`);
-            }}
-          >
-            Fetch Full Debug Data
-          </Button>
-        </CardContent>
-      </Card>
+      <DebugInfo
+        meetId={id}
+        meetLineupsCount={meet.meetLineups.length}
+        relayEntriesCount={meet.relayEntries.length}
+        selectedEventsCount={selectedEvents.length}
+        eventsFoundCount={events.length}
+      />
 
       {/* Results Viewer */}
       <ResultsViewer
