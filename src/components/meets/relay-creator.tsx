@@ -220,6 +220,28 @@ export function RelayCreator({
 
   const validation = useMemo(() => validateRelays(), [relayEntries, maxRelays, team.athletes]);
 
+  // Calculate relay assignments per athlete
+  const athleteRelayAssignments = useMemo(() => {
+    const assignments: Record<string, { count: number; relays: string[] }> = {};
+
+    Object.entries(relayEntries).forEach(([eventId, entry]) => {
+      const event = relayEvents.find((e) => e.id === eventId);
+      const eventName = event?.name || eventId;
+
+      entry.athletes.forEach((athleteId) => {
+        if (athleteId) {
+          if (!assignments[athleteId]) {
+            assignments[athleteId] = { count: 0, relays: [] };
+          }
+          assignments[athleteId].count++;
+          assignments[athleteId].relays.push(eventName);
+        }
+      });
+    });
+
+    return assignments;
+  }, [relayEntries, relayEvents]);
+
   const handleSave = async () => {
     if (!validation.isValid) {
       toast.error("Please fix relay assignment violations before saving");
@@ -327,6 +349,76 @@ export function RelayCreator({
           />
           <span className="text-sm text-slate-600">seconds</span>
         </div>
+
+        {/* Relay Assignments Summary */}
+        {Object.keys(athleteRelayAssignments).length > 0 && (
+          <Card className="bg-slate-50">
+            <CardHeader>
+              <CardTitle className="text-lg">Relay Assignments Summary</CardTitle>
+              <CardDescription>
+                Swimmers assigned to relays and their relay count
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Object.entries(athleteRelayAssignments)
+                  .sort(([, a], [, b]) => b.count - a.count)
+                  .map(([athleteId, assignment]) => {
+                    const athlete = team.athletes.find((a) => a.id === athleteId);
+                    if (!athlete) return null;
+
+                    const isAtLimit = assignment.count >= maxRelays;
+                    const isNearLimit = assignment.count >= maxRelays - 1;
+
+                    return (
+                      <div
+                        key={athleteId}
+                        className={`p-3 rounded-lg border ${
+                          isAtLimit
+                            ? "bg-red-50 border-red-200"
+                            : isNearLimit
+                            ? "bg-yellow-50 border-yellow-200"
+                            : "bg-white border-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="font-medium text-sm">
+                            {formatName(athlete.firstName, athlete.lastName)}
+                          </span>
+                          <Badge
+                            variant={
+                              isAtLimit
+                                ? "destructive"
+                                : isNearLimit
+                                ? "default"
+                                : "secondary"
+                            }
+                            className="text-xs"
+                          >
+                            {assignment.count}/{maxRelays}
+                          </Badge>
+                        </div>
+                        <div className="text-xs text-slate-600">
+                          <div className="font-semibold mb-1">Relays:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {assignment.relays.map((relay, idx) => (
+                              <Badge
+                                key={idx}
+                                variant="outline"
+                                className="text-[10px] py-0 px-1.5"
+                              >
+                                {relay}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Validation Errors */}
         {!validation.isValid && (
