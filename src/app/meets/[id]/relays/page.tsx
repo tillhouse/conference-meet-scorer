@@ -2,11 +2,20 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ListChecks } from "lucide-react";
+import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
-import { LineupSelector } from "@/components/meets/lineup-selector";
+import { RelayCreator } from "@/components/meets/relay-creator";
 
-export default async function MeetLineupsPage({
+// Standard relay events
+const RELAY_EVENTS = [
+  { name: "200 MR", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"] },
+  { name: "200 FR", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
+  { name: "400 MR", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"] },
+  { name: "400 FR", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
+  { name: "800 FR", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"] },
+];
+
+export default async function MeetRelaysPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -26,9 +35,6 @@ export default async function MeetLineupsPage({
                 },
                 include: {
                   eventTimes: {
-                    where: {
-                      isRelaySplit: false,
-                    },
                     include: {
                       event: true,
                     },
@@ -46,6 +52,10 @@ export default async function MeetLineupsPage({
     },
   });
 
+  if (!meet) {
+    notFound();
+  }
+
   // Filter athletes to only show those selected in the roster
   if (meet) {
     meet.meetTeams = meet.meetTeams.map((meetTeam) => {
@@ -57,46 +67,58 @@ export default async function MeetLineupsPage({
         ...meetTeam,
         team: {
           ...meetTeam.team,
-          athletes: meetTeam.team.athletes.filter((athlete) =>
-            selectedAthleteIds.includes(athlete.id)
-          ),
+          athletes: meetTeam.team.athletes
+            .filter((athlete) => selectedAthleteIds.includes(athlete.id))
+            .filter((athlete) => !athlete.isDiver), // Only swimmers for relays
         },
       };
     });
   }
 
-  if (!meet) {
-    notFound();
-  }
-
+  // Get relay events from selected events
   const selectedEvents = meet.selectedEvents
     ? (JSON.parse(meet.selectedEvents) as string[])
     : [];
   const events = await prisma.event.findMany({
     where: {
       id: { in: selectedEvents },
+      eventType: "relay",
     },
     orderBy: {
       name: "asc",
     },
   });
 
-  const swimmingEvents = events.filter((e) => e.eventType === "individual");
-  const divingEvents = events.filter((e) => e.eventType === "diving");
+  // If no relay events in database, use the standard ones
+  const relayEvents = events.length > 0 
+    ? events.map((e) => {
+        // Determine legs based on event name
+        let legs = ["FR", "FR", "FR", "FR"];
+        if (e.name.includes("MR") || e.name.includes("Medley")) {
+          legs = ["BK", "BR", "FL", "FR"];
+        }
+        return { ...e, legs };
+      })
+    : RELAY_EVENTS.map((re) => ({
+        id: re.name,
+        name: re.name,
+        fullName: re.label,
+        legs: re.legs,
+      }));
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/meets/${id}/roster`}>
+          <Link href={`/meets/${id}/lineups`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">Set Event Lineups</h1>
+          <h1 className="text-3xl font-bold text-slate-900">Create Relays</h1>
           <p className="text-slate-600 mt-1">
-            Select which events each athlete will compete in for {meet.name}
+            Set relay lineups for each team in {meet.name}
           </p>
         </div>
       </div>
@@ -104,31 +126,31 @@ export default async function MeetLineupsPage({
       {/* Constraints Info */}
       <Card className="bg-blue-50 border-blue-200">
         <CardHeader>
-          <CardTitle className="text-lg">Event Limits</CardTitle>
+          <CardTitle className="text-lg">Relay Rules</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div>
-            <strong>Swimmers:</strong> Max {meet.maxIndivEvents} individual events, Max {meet.maxRelays} relay events
+            <strong>Max Relays per Swimmer:</strong> {meet.maxRelays}
           </div>
           <div>
-            <strong>Divers:</strong> Max {meet.maxDivingEvents} diving events
+            <strong>First Leg:</strong> Uses flat-start individual event times (50 BK, 100 BK, 50 FR, 100 FR, 200 FR)
+          </div>
+          <div>
+            <strong>Other Legs:</strong> Use relay splits OR flat-start time minus correction factor (default: 0.5s)
           </div>
         </CardContent>
       </Card>
 
-      {/* Team Lineups */}
+      {/* Relay Creators for Each Team */}
       <div className="space-y-6">
         {meet.meetTeams.map((meetTeam) => (
-          <LineupSelector
+          <RelayCreator
             key={meetTeam.id}
             meetId={id}
             meetTeam={meetTeam}
             team={meetTeam.team}
-            swimmingEvents={swimmingEvents}
-            divingEvents={divingEvents}
-            maxIndivEvents={meet.maxIndivEvents}
+            relayEvents={relayEvents}
             maxRelays={meet.maxRelays}
-            maxDivingEvents={meet.maxDivingEvents}
           />
         ))}
       </div>
@@ -136,11 +158,11 @@ export default async function MeetLineupsPage({
       {/* Navigation */}
       <div className="flex justify-end gap-4 pt-4 border-t">
         <Button variant="outline" asChild>
-          <Link href={`/meets/${id}/roster`}>Back</Link>
+          <Link href={`/meets/${id}/lineups`}>Back</Link>
         </Button>
         <Button asChild>
-          <Link href={`/meets/${id}/relays`}>
-            Next: Set Relays
+          <Link href={`/meets/${id}/results`}>
+            Next: Enter Results
           </Link>
         </Button>
       </div>
