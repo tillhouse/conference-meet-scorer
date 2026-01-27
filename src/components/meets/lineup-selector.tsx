@@ -157,8 +157,14 @@ export function LineupSelector({
     try {
       const lineups: Record<string, string[]> = {};
       Object.entries(athleteLineups).forEach(([athleteId, eventIds]) => {
-        lineups[athleteId] = Array.from(eventIds);
+        const eventArray = Array.from(eventIds);
+        // Only include athletes with at least one event
+        if (eventArray.length > 0) {
+          lineups[athleteId] = eventArray;
+        }
       });
+
+      console.log("Saving lineups:", { lineups, athleteCount: Object.keys(lineups).length });
 
       const response = await fetch(`/api/meets/${meetId}/lineups/${meetTeam.teamId}`, {
         method: "POST",
@@ -169,7 +175,14 @@ export function LineupSelector({
       });
 
       if (!response.ok) {
-        const error = await response.json();
+        let error;
+        try {
+          error = await response.json();
+        } catch (e) {
+          // Response might not be JSON or might be empty
+          const text = await response.text();
+          error = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+        }
         console.error("Lineup save error:", error);
         const errorMessage = error.details 
           ? `Validation error: ${JSON.stringify(error.details)}`

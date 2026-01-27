@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const saveLineupSchema = z.object({
-  lineups: z.record(z.array(z.string())), // { athleteId: [eventId1, eventId2, ...] }
+  lineups: z.record(z.array(z.string()).min(1)), // { athleteId: [eventId1, eventId2, ...] } - at least one event per athlete
 });
 
 export async function GET(
