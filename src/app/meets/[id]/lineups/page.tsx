@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { LineupSelector } from "@/components/meets/lineup-selector";
+import { LineupNavigation } from "@/components/meets/lineup-navigation";
 
 export default async function MeetLineupsPage({
   params,
@@ -134,16 +135,12 @@ export default async function MeetLineupsPage({
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-end gap-4 pt-4 border-t">
-        <Button variant="outline" asChild>
-          <Link href={`/meets/${id}/roster`}>Back</Link>
-        </Button>
-        <Button asChild>
-          <Link href={`/meets/${id}/relays`}>
-            Next: Set Relays
-          </Link>
-        </Button>
-      </div>
+      <LineupNavigation
+        meetId={id}
+        teamIds={meet.meetTeams.map((mt) => mt.teamId)}
+        backUrl={`/meets/${id}/roster`}
+        nextUrl={`/meets/${id}/relays`}
+      />
     </div>
   );
 }

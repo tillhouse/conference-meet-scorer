@@ -10,6 +10,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { formatName } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Athlete {
   id: string;
@@ -66,7 +76,10 @@ export function LineupSelector({
   maxDivingEvents,
 }: LineupSelectorProps) {
   const [athleteLineups, setAthleteLineups] = useState<Record<string, Set<string>>>({});
+  const [savedLineups, setSavedLineups] = useState<Record<string, Set<string>>>({});
   const [saving, setSaving] = useState(false);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   // Load existing lineups
   useEffect(() => {
@@ -79,12 +92,28 @@ export function LineupSelector({
             lineups[athleteId] = new Set(eventIds as string[]);
           });
           setAthleteLineups(lineups);
+          setSavedLineups(JSON.parse(JSON.stringify(lineups))); // Deep copy
         }
       })
       .catch(() => {
         // No existing lineups
       });
   }, [meetId, meetTeam.teamId]);
+
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    const current = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(athleteLineups).map(([k, v]) => [k, Array.from(v).sort()])
+      )
+    );
+    const saved = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(savedLineups).map(([k, v]) => [k, Array.from(v).sort()])
+      )
+    );
+    return current !== saved;
+  }, [athleteLineups, savedLineups]);
 
   const handleToggleEvent = (athleteId: string, eventId: string, eventType: string) => {
     const newLineups = { ...athleteLineups };
@@ -145,12 +174,26 @@ export function LineupSelector({
       }
 
       toast.success(`${team.name} lineups saved successfully`);
+      // Update saved state
+      setSavedLineups(JSON.parse(JSON.stringify(athleteLineups))); // Deep copy
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save lineups");
     } finally {
       setSaving(false);
     }
   };
+
+  // Expose save function and unsaved state to parent
+  useEffect(() => {
+    // Store in a way parent can access
+    (window as any)[`lineupSelector_${meetTeam.teamId}`] = {
+      hasUnsavedChanges,
+      save: handleSave,
+    };
+    return () => {
+      delete (window as any)[`lineupSelector_${meetTeam.teamId}`];
+    };
+  }, [hasUnsavedChanges, meetTeam.teamId]);
 
   const swimmers = team.athletes.filter((a) => !a.isDiver);
   const divers = team.athletes.filter((a) => a.isDiver);
