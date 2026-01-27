@@ -174,16 +174,12 @@ export default async function MeetRelaysPage({
       </div>
 
       {/* Navigation */}
-      <div className="flex justify-end gap-4 pt-4 border-t">
-        <Button variant="outline" asChild>
-          <Link href={`/meets/${id}/lineups`}>Back</Link>
-        </Button>
-        <Button asChild>
-          <Link href={`/meets/${id}/results`}>
-            View Results & Standings
-          </Link>
-        </Button>
-      </div>
+      <RelayNavigation
+        meetId={id}
+        teamIds={meet.meetTeams.map((mt) => mt.teamId)}
+        backUrl={`/meets/${id}/lineups`}
+        nextUrl={`/meets/${id}/results`}
+      />
     </div>
   );
 }
