@@ -239,10 +239,12 @@ export async function POST(
         lineupsToCreate.push({
           meetId,
           athleteId,
-          eventId: event.id,
+          eventId: event.id, // Use the database event ID, not the name
           seedTime,
           seedTimeSeconds,
         });
+        
+        console.log(`[Lineup Save] Adding lineup: athlete=${athlete.firstName} ${athlete.lastName}, event=${event.name} (${event.id})`);
       }
     }
 
