@@ -86,39 +86,28 @@ export async function POST(request: NextRequest) {
 
     const finalEventIds = allEvents.map((e) => e.id);
 
-    // Prepare meet data (only include fields that exist in schema)
-    const meetData: any = {
-      name: data.name,
-      date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
-      location: data.location && data.location.trim() !== "" ? data.location : null,
-      maxAthletes: data.maxAthletes,
-      diverRatio: data.diverRatio,
-      divingIncluded: data.divingIncluded,
-      maxIndivEvents: data.maxIndivEvents,
-      maxRelays: data.maxRelays,
-      maxDivingEvents: data.maxDivingEvents,
-      scoringType: data.meetType === "championship" ? "championship" : "dual",
-      scoringPlaces: data.scoringPlaces,
-      scoringStartPoints: data.scoringStartPoints,
-      relayMultiplier: data.relayMultiplier,
-      individualScoring: data.individualScoring,
-      relayScoring: data.relayScoring,
-      selectedEvents: JSON.stringify(finalEventIds),
-    };
-
-    // Only add meetType if it exists in the schema (check by trying to see if Prisma accepts it)
-    // For now, let's try without it and see what error we get
-    try {
-      meetData.meetType = data.meetType;
-    } catch (e) {
-      console.log("meetType field not available, skipping");
-    }
-
-    console.log("Creating meet with data:", JSON.stringify(meetData, null, 2));
-
     // Create the meet
+    // Note: Temporarily excluding meetType until Prisma client is regenerated
     const meet = await prisma.meet.create({
-      data: meetData,
+      data: {
+        name: data.name,
+        date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
+        location: data.location && data.location.trim() !== "" ? data.location : null,
+        // meetType: data.meetType, // Temporarily commented out - will add back after Prisma regenerate
+        maxAthletes: data.maxAthletes,
+        diverRatio: data.diverRatio,
+        divingIncluded: data.divingIncluded,
+        maxIndivEvents: data.maxIndivEvents,
+        maxRelays: data.maxRelays,
+        maxDivingEvents: data.maxDivingEvents,
+        scoringType: data.meetType === "championship" ? "championship" : "dual",
+        scoringPlaces: data.scoringPlaces,
+        scoringStartPoints: data.scoringStartPoints,
+        relayMultiplier: data.relayMultiplier,
+        individualScoring: data.individualScoring,
+        relayScoring: data.relayScoring,
+        selectedEvents: JSON.stringify(finalEventIds),
+      },
       data: {
         name: data.name,
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
