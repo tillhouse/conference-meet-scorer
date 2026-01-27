@@ -75,6 +75,12 @@ export default async function MeetResultsPage({
     ? (JSON.parse(meet.relayScoring) as Record<string, number>)
     : {};
 
+  // Debug: Log what we're getting
+  console.log("Meet ID:", id);
+  console.log("MeetLineups count:", meet.meetLineups.length);
+  console.log("RelayEntries count:", meet.relayEntries.length);
+  console.log("Selected events:", selectedEvents.length);
+
   return (
     <div className="space-y-6">
       {/* Header */}
