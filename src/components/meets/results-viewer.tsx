@@ -505,9 +505,46 @@ export function ResultsViewer({
                     <div key={event.id} className="border rounded-lg p-4">
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                       {sortedLineups.length === 0 ? (
-                        <p className="text-slate-500 text-sm">No results yet</p>
+                        <p className="text-slate-500 text-sm">No entries</p>
                       ) : (
                         <div className="space-y-4">
+                          {/* Show entries without places first (seed times) */}
+                          {sortedLineups.filter((l) => !l.place).length > 0 && (
+                            <div className="border rounded-lg">
+                              <div className="p-2 font-semibold text-sm bg-slate-50 border-slate-200 border-b">
+                                Entries (No Results Yet)
+                              </div>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Athlete</TableHead>
+                                    <TableHead>Team</TableHead>
+                                    <TableHead className="text-right">Seed Time</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {sortedLineups
+                                    .filter((l) => !l.place)
+                                    .map((lineup) => (
+                                      <TableRow key={lineup.id}>
+                                        <TableCell>
+                                          {formatName(
+                                            lineup.athlete.firstName,
+                                            lineup.athlete.lastName
+                                          )}
+                                        </TableCell>
+                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {lineup.seedTime || "N/A"}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+
+                          {/* Group by finals for entries with places */}
                           {[1, 9, 17, 25].map((startPlace) => {
                             const finalResults = sortedLineups.filter(
                               (l) =>
@@ -592,9 +629,46 @@ export function ResultsViewer({
                     <div key={event.id} className="border rounded-lg p-4">
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                       {sortedLineups.length === 0 ? (
-                        <p className="text-slate-500 text-sm">No results yet</p>
+                        <p className="text-slate-500 text-sm">No entries</p>
                       ) : (
                         <div className="space-y-4">
+                          {/* Show entries without places first (seed scores) */}
+                          {sortedLineups.filter((l) => !l.place).length > 0 && (
+                            <div className="border rounded-lg">
+                              <div className="p-2 font-semibold text-sm bg-slate-50 border-slate-200 border-b">
+                                Entries (No Results Yet)
+                              </div>
+                              <Table>
+                                <TableHeader>
+                                  <TableRow>
+                                    <TableHead>Athlete</TableHead>
+                                    <TableHead>Team</TableHead>
+                                    <TableHead className="text-right">Seed Score</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {sortedLineups
+                                    .filter((l) => !l.place)
+                                    .map((lineup) => (
+                                      <TableRow key={lineup.id}>
+                                        <TableCell>
+                                          {formatName(
+                                            lineup.athlete.firstName,
+                                            lineup.athlete.lastName
+                                          )}
+                                        </TableCell>
+                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell className="text-right font-mono">
+                                          {lineup.seedTime || "N/A"}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          )}
+
+                          {/* Group by finals for entries with places */}
                           {[1, 9, 17, 25].map((startPlace) => {
                             const finalResults = sortedLineups.filter(
                               (l) =>
@@ -681,42 +755,48 @@ export function ResultsViewer({
                   });
 
                   return (
-                    <div key={event.id} className="border rounded-lg p-4">
-                      <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
-                      {sortedRelays.length === 0 ? (
-                        <p className="text-slate-500 text-sm">No results yet</p>
-                      ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Place</TableHead>
-                              <TableHead>Team</TableHead>
-                              <TableHead className="text-right">Time</TableHead>
-                              <TableHead className="text-right">Points</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {sortedRelays.map((relay, idx) => (
-                              <TableRow key={relay.id}>
-                                <TableCell className="font-bold">
-                                  {relay.place || idx + 1}
-                                  {relay.place === 1 && " 🥇"}
-                                  {relay.place === 2 && " 🥈"}
-                                  {relay.place === 3 && " 🥉"}
-                                </TableCell>
-                                <TableCell>{relay.team.name}</TableCell>
-                                <TableCell className="text-right font-mono">
-                                  {relay.finalTime || relay.seedTime || "N/A"}
-                                </TableCell>
-                                <TableCell className="text-right font-semibold">
-                                  {relay.points || 0}
-                                </TableCell>
+                      <div key={event.id} className="border rounded-lg p-4">
+                        <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
+                        {sortedRelays.length === 0 ? (
+                          <p className="text-slate-500 text-sm">No relays entered</p>
+                        ) : (
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Place</TableHead>
+                                <TableHead>Team</TableHead>
+                                <TableHead className="text-right">Time</TableHead>
+                                <TableHead className="text-right">Points</TableHead>
                               </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
+                            </TableHeader>
+                            <TableBody>
+                              {sortedRelays.map((relay, idx) => (
+                                <TableRow key={relay.id}>
+                                  <TableCell className="font-bold">
+                                    {relay.place ? (
+                                      <>
+                                        {relay.place}
+                                        {relay.place === 1 && " 🥇"}
+                                        {relay.place === 2 && " 🥈"}
+                                        {relay.place === 3 && " 🥉"}
+                                      </>
+                                    ) : (
+                                      <span className="text-slate-400">-</span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>{relay.team.name}</TableCell>
+                                  <TableCell className="text-right font-mono">
+                                    {relay.finalTime || relay.seedTime || "N/A"}
+                                  </TableCell>
+                                  <TableCell className="text-right font-semibold">
+                                    {relay.points || 0}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        )}
+                      </div>
                   );
                 })}
               </div>
