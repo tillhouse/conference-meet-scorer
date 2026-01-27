@@ -28,7 +28,13 @@ export default async function SimulateMeetPage({
         include: {
           athlete: {
             include: {
-              team: true,
+              team: {
+                select: {
+                  id: true,
+                  name: true,
+                  primaryColor: true,
+                },
+              },
             },
           },
           event: true,
@@ -36,7 +42,13 @@ export default async function SimulateMeetPage({
       },
       relayEntries: {
         include: {
-          team: true,
+          team: {
+            select: {
+              id: true,
+              name: true,
+              primaryColor: true,
+            },
+          },
           event: true,
         },
       },

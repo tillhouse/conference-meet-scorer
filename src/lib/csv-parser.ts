@@ -1,4 +1,4 @@
-import { parseTimeToSeconds } from "./utils";
+import { parseTimeToSeconds, normalizeTimeFormat } from "./utils";
 
 export interface ParsedAthlete {
   firstName: string;
@@ -122,9 +122,12 @@ export function parseCSV(content: string): ParsedAthlete[] {
         
         // Only add if we got a valid time/score
         if (timeSeconds > 0) {
+          // Normalize time format to mm:ss.00 (no leading zeros, always 2 decimals)
+          const normalizedTime = normalizeTimeFormat(timeValue);
+          
           events.push({
             eventName: eventCol.name,
-            time: timeValue,
+            time: normalizedTime,
             timeSeconds,
           });
         }

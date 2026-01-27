@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, AlertCircle } from "lucide-react";
-import { formatName } from "@/lib/utils";
+import { formatName, normalizeTimeFormat } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -318,7 +318,7 @@ export function LineupSelector({
                             {event.name}
                             {time && (
                               <span className="text-slate-500 block text-[10px]">
-                                {time}
+                                {normalizeTimeFormat(time)}
                               </span>
                             )}
                           </Label>
@@ -380,7 +380,7 @@ export function LineupSelector({
                               {event.name}
                               {time && (
                                 <span className="text-slate-500 block text-[10px]">
-                                  {time}
+                                  {normalizeTimeFormat(time)}
                                 </span>
                               )}
                             </Label>

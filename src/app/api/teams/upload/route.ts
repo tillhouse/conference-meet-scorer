@@ -109,13 +109,14 @@ export async function POST(request: NextRequest) {
               });
             }
 
-            // Find or create athlete event
+            // Find or create athlete event (individual event, not relay split)
             const existingAthleteEvent =
               await prisma.athleteEvent.findUnique({
                 where: {
-                  athleteId_eventId: {
+                  athleteId_eventId_isRelaySplit: {
                     athleteId: athlete.id,
                     eventId: event.id,
+                    isRelaySplit: false,
                   },
                 },
               });
@@ -145,6 +146,7 @@ export async function POST(request: NextRequest) {
                   eventId: event.id,
                   time: eventData.time,
                   timeSeconds: eventData.timeSeconds,
+                  isRelaySplit: false, // CSV uploads are individual events, not relay splits
                   source: "csv_upload",
                 },
               });

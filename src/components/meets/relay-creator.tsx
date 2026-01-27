@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, AlertCircle } from "lucide-react";
-import { formatName, parseTimeToSeconds, formatSecondsToTime } from "@/lib/utils";
+import { CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import { formatName, parseTimeToSeconds, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Athlete {
@@ -74,6 +74,7 @@ export function RelayCreator({
   const [savedRelayEntries, setSavedRelayEntries] = useState<Record<string, RelayEntry>>({});
   const [correctionFactor, setCorrectionFactor] = useState(0.5);
   const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   // Initialize relay entries
   useEffect(() => {
@@ -92,25 +93,37 @@ export function RelayCreator({
     fetch(`/api/meets/${meetId}/relays/${meetTeam.teamId}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.relays) {
+        if (data.relays && data.relays.length > 0) {
           const loaded: Record<string, RelayEntry> = {};
           data.relays.forEach((relay: any) => {
-            loaded[relay.eventId] = {
-              eventId: relay.eventId,
-              athletes: relay.members || [null, null, null, null],
-              times: relay.times || [null, null, null, null],
-              useRelaySplits: relay.useRelaySplits || [false, true, true, true],
-            };
+            // Use event name as key (relay.eventId is the event name from API)
+            // Skip if eventId looks like a database ID (long alphanumeric string) instead of event name
+            const eventName = relay.eventId;
+            if (eventName && eventName.length < 20 && /^[\d\sA-Z]+$/.test(eventName)) {
+              // Valid event name (e.g., "200 MR", "400 FR")
+              loaded[eventName] = {
+                eventId: eventName,
+                athletes: relay.members || [null, null, null, null],
+                times: relay.times || [null, null, null, null],
+                useRelaySplits: relay.useRelaySplits || [false, true, true, true],
+              };
+            } else {
+              // Skip old format entries with database IDs
+              console.warn(`Skipping relay entry with invalid eventId format: ${eventName}`);
+            }
           });
-          setRelayEntries(loaded);
-          setSavedRelayEntries(JSON.parse(JSON.stringify(loaded))); // Deep copy
+          // Merge with initialized entries to ensure all events are present
+          const merged = { ...entries, ...loaded };
+          setRelayEntries(merged);
+          setSavedRelayEntries(JSON.parse(JSON.stringify(merged))); // Deep copy
           if (data.correctionFactor !== undefined) {
             setCorrectionFactor(data.correctionFactor);
           }
         }
       })
-      .catch(() => {
-        // No existing relays
+      .catch((error) => {
+        console.error("Error loading relays:", error);
+        // No existing relays - entries already initialized above
       });
   }, [meetId, meetTeam.teamId, relayEvents]);
 
@@ -251,6 +264,43 @@ export function RelayCreator({
     return assignments;
   }, [relayEntries, relayEvents]);
 
+  const handleClear = async () => {
+    if (!confirm(`Are you sure you want to clear all relays for ${team.name}? This action cannot be undone.`)) {
+      return;
+    }
+
+    setClearing(true);
+    try {
+      const response = await fetch(`/api/meets/${meetId}/relays/${meetTeam.teamId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to clear relays");
+      }
+
+      // Reset local state
+      const entries: Record<string, RelayEntry> = {};
+      relayEvents.forEach((event) => {
+        entries[event.id] = {
+          eventId: event.id,
+          athletes: [null, null, null, null],
+          times: [null, null, null, null],
+          useRelaySplits: [false, true, true, true],
+        };
+      });
+      setRelayEntries(entries);
+      setSavedRelayEntries(JSON.parse(JSON.stringify(entries))); // Deep copy
+
+      toast.success(`${team.name} relays cleared successfully`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to clear relays");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   const handleSave = async () => {
     if (!validation.isValid) {
       toast.error("Please fix relay assignment violations before saving");
@@ -260,33 +310,46 @@ export function RelayCreator({
     setSaving(true);
     try {
       // Calculate actual times for each leg before saving
-      const relays = Object.values(relayEntries).map((entry) => {
-        const event = relayEvents.find((e) => e.id === entry.eventId);
-        if (!event) return null;
-
-        const calculatedTimes = event.legs.map((stroke, idx) => {
-          // Use custom time if provided, otherwise calculate
-          if (entry.times[idx]) {
-            return entry.times[idx];
+      const relays = Object.values(relayEntries)
+        .map((entry) => {
+          const event = relayEvents.find((e) => e.id === entry.eventId);
+          if (!event) {
+            console.warn(`Event not found for entry: ${entry.eventId}`);
+            return null;
           }
-          return calculateLegTime(
-            entry.athletes[idx],
-            idx,
-            stroke,
-            entry.eventId,
-            entry.useRelaySplits[idx],
-            entry.times[idx],
-            event.distances[idx]
-          );
-        });
 
-        return {
-          eventId: entry.eventId,
-          members: entry.athletes,
-          times: calculatedTimes,
-          useRelaySplits: entry.useRelaySplits,
-        };
-      }).filter((r) => r !== null) as any[];
+          // Only include relays that have at least one athlete assigned
+          const hasAthletes = entry.athletes.some((athleteId) => athleteId !== null);
+          if (!hasAthletes) {
+            return null; // Skip empty relays
+          }
+
+          const calculatedTimes = event.legs.map((stroke, idx) => {
+            // Use custom time if provided, otherwise calculate
+            if (entry.times[idx]) {
+              return entry.times[idx];
+            }
+            return calculateLegTime(
+              entry.athletes[idx],
+              idx,
+              stroke,
+              entry.eventId,
+              entry.useRelaySplits[idx],
+              entry.times[idx],
+              event.distances[idx]
+            );
+          });
+
+          return {
+            eventId: entry.eventId,
+            members: entry.athletes,
+            times: calculatedTimes,
+            useRelaySplits: entry.useRelaySplits,
+          };
+        })
+        .filter((r) => r !== null) as any[];
+      
+      console.log("Saving relays:", JSON.stringify(relays, null, 2));
 
       const response = await fetch(`/api/meets/${meetId}/relays/${meetTeam.teamId}`, {
         method: "POST",
@@ -300,8 +363,24 @@ export function RelayCreator({
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to save relays");
+        let errorMessage = "Failed to save relays";
+        try {
+          const error = await response.json();
+          errorMessage = error.error || errorMessage;
+          if (error.violations && Array.isArray(error.violations)) {
+            errorMessage += `: ${error.violations.join(", ")}`;
+          }
+          if (error.details) {
+            console.error("Validation details:", error.details);
+            errorMessage += " (check console for details)";
+          }
+        } catch (e) {
+          // Response might not be JSON
+          const text = await response.text();
+          console.error("Error response:", text);
+          errorMessage = text || `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       toast.success(`${team.name} relays saved successfully`);
@@ -347,6 +426,16 @@ export function RelayCreator({
                 Violations
               </Badge>
             )}
+            <Button
+              onClick={handleClear}
+              disabled={clearing}
+              variant="outline"
+              size="sm"
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              {clearing ? "Clearing..." : "Clear Relays"}
+            </Button>
             <Button onClick={handleSave} disabled={!validation.isValid || saving} size="sm">
               {saving ? "Saving..." : "Save Relays"}
             </Button>
@@ -631,7 +720,7 @@ export function RelayCreator({
                           entry.times[idx],
                           event.distances[idx]
                         );
-                        return `${event.distances[idx]} ${stroke}: ${time || "N/A"}`;
+                        return `${event.distances[idx]} ${stroke}: ${time ? normalizeTimeFormat(time) : "N/A"}`;
                       }).join(" • ")}
                     </div>
                   </div>

@@ -231,6 +231,10 @@ model RelayEntry {
   
   // Relay members (JSON array of athlete IDs)
   members String? // JSON: ["athleteId1", "athleteId2", "athleteId3", "athleteId4"]
+  
+  // Individual leg times and settings (JSON arrays)
+  legTimes String? // JSON: ["19.95", "20.10", null, "19.88"] - individual leg times
+  useRelaySplits String? // JSON: [false, true, true, true] - whether each leg uses relay split
 
   meet  Meet  @relation(fields: [meetId], references: [id], onDelete: Cascade)
   team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)

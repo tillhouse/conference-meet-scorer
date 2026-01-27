@@ -16,6 +16,7 @@ export function CSVUpload({ teamId, teamName }: CSVUploadProps) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [uploadResult, setUploadResult] = useState<{
     success: boolean;
     athletesAdded: number;
@@ -23,15 +24,44 @@ export function CSVUpload({ teamId, teamName }: CSVUploadProps) {
     errors: string[];
   } | null>(null);
 
+  const validateFile = (selectedFile: File) => {
+    if (selectedFile.type === "text/csv" || selectedFile.type === "text/plain" || selectedFile.name.endsWith(".csv") || selectedFile.name.endsWith(".txt")) {
+      setFile(selectedFile);
+      setUploadResult(null);
+      return true;
+    } else {
+      toast.error("Please select a CSV or TXT file");
+      return false;
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.type === "text/csv" || selectedFile.type === "text/plain" || selectedFile.name.endsWith(".csv") || selectedFile.name.endsWith(".txt")) {
-        setFile(selectedFile);
-        setUploadResult(null);
-      } else {
-        toast.error("Please select a CSV or TXT file");
-      }
+      validateFile(selectedFile);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const droppedFile = e.dataTransfer.files?.[0];
+    if (droppedFile) {
+      validateFile(droppedFile);
     }
   };
 
@@ -91,7 +121,16 @@ export function CSVUpload({ teamId, teamName }: CSVUploadProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           {/* File Input */}
-          <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-slate-400 transition-colors">
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+              isDragging
+                ? "border-slate-500 bg-slate-50"
+                : "border-slate-300 hover:border-slate-400"
+            }`}
+          >
             <input
               type="file"
               accept=".csv,.txt"
@@ -103,12 +142,20 @@ export function CSVUpload({ teamId, teamName }: CSVUploadProps) {
               htmlFor="csv-upload"
               className="cursor-pointer flex flex-col items-center gap-4"
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+              <div className={`flex h-12 w-12 items-center justify-center rounded-full transition-colors ${
+                isDragging ? "bg-slate-200" : "bg-slate-100"
+              }`}>
                 <Upload className="h-6 w-6 text-slate-600" />
               </div>
               <div>
                 <p className="text-sm font-medium text-slate-900">
-                  {file ? file.name : "Click to select a file"}
+                  {file ? (
+                    file.name
+                  ) : isDragging ? (
+                    "Drop file here"
+                  ) : (
+                    "Click to select a file or drag and drop"
+                  )}
                 </p>
                 <p className="text-xs text-slate-500 mt-1">
                   CSV or TXT format

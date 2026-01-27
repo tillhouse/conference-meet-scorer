@@ -195,7 +195,8 @@ export async function POST(
     }
 
     // Delete existing lineups for this team
-    await prisma.meetLineup.deleteMany({
+    // First, get the count of existing lineups to verify deletion
+    const existingLineupsCount = await prisma.meetLineup.count({
       where: {
         meetId,
         athlete: {
@@ -203,6 +204,24 @@ export async function POST(
         },
       },
     });
+    
+    console.log(`[Lineup Save] Found ${existingLineupsCount} existing lineups for team ${teamId} in meet ${meetId}`);
+    
+    const deleteResult = await prisma.meetLineup.deleteMany({
+      where: {
+        meetId,
+        athlete: {
+          teamId,
+        },
+      },
+    });
+    
+    console.log(`[Lineup Save] Deleted ${deleteResult.count} existing lineups for team ${teamId}`);
+    
+    // Verify deletion worked
+    if (existingLineupsCount > 0 && deleteResult.count === 0) {
+      console.error(`[Lineup Save] WARNING: Expected to delete ${existingLineupsCount} lineups but deleted 0. This may indicate a data issue.`);
+    }
 
     // Create new lineups
     const lineupsToCreate = [];
@@ -257,6 +276,10 @@ export async function POST(
       }
     }
 
+    let createdCount = 0;
+    let duplicateCount = 0;
+    let errorCount = 0;
+    
     if (lineupsToCreate.length > 0) {
       // Prisma 6 doesn't support skipDuplicates, so we'll create them individually
       // and catch any unique constraint violations (duplicates)
@@ -265,29 +288,37 @@ export async function POST(
           await prisma.meetLineup.create({
             data: lineup,
           });
+          createdCount++;
         } catch (error: any) {
           // If it's a unique constraint violation, it's a duplicate - skip it
           if (error?.code === 'P2002') {
-            console.warn(`[Lineup Save] Duplicate lineup skipped: ${lineup.athleteId}/${lineup.eventId}`);
+            console.warn(`[Lineup Save] Duplicate lineup skipped: athlete=${lineup.athleteId}, event=${lineup.eventId}`);
+            duplicateCount++;
             continue;
           }
-          // Otherwise, re-throw the error
-          throw error;
+          // Otherwise, log and count the error but continue
+          console.error(`[Lineup Save] Error creating lineup for athlete=${lineup.athleteId}, event=${lineup.eventId}:`, error);
+          errorCount++;
         }
       }
     }
+    
+    console.log(`[Lineup Save] Summary: Created ${createdCount}, Duplicates ${duplicateCount}, Errors ${errorCount}, Skipped (not found) ${skippedLineups.length}`);
 
-    console.log(`Created ${lineupsToCreate.length} lineups, skipped ${skippedLineups.length}`);
     if (skippedLineups.length > 0) {
-      console.log("Skipped lineups:", skippedLineups);
+      console.log("Skipped lineups (events not found):", skippedLineups);
     }
 
     return NextResponse.json({
       success: true,
       message: "Lineups saved successfully",
-      count: lineupsToCreate.length,
+      count: createdCount,
+      attempted: lineupsToCreate.length,
+      duplicates: duplicateCount,
+      errors: errorCount,
       skipped: skippedLineups.length,
       skippedDetails: skippedLineups,
+      deleted: deleteResult.count,
     });
   } catch (error) {
     console.error("=".repeat(50));

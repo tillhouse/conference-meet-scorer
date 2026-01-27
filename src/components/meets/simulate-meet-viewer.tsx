@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatName, formatSecondsToTime, parseTimeToSeconds } from "@/lib/utils";
-import { Play, CheckCircle2, AlertCircle } from "lucide-react";
+import { formatName, formatSecondsToTime, parseTimeToSeconds, normalizeTimeFormat } from "@/lib/utils";
+import { Play, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Meet {
   id: string;
@@ -44,6 +51,7 @@ interface Meet {
       team: {
         id: string;
         name: string;
+        primaryColor: string | null;
       };
     };
     event: {
@@ -95,6 +103,8 @@ export function SimulateMeetViewer({
   const router = useRouter();
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulated, setSimulated] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [eventFilter, setEventFilter] = useState<string>("all");
 
   // Group lineups by event
   const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
@@ -150,6 +160,50 @@ export function SimulateMeetViewer({
   const swimmingEvents = sortedEvents.filter((e) => e.eventType === "individual");
   const divingEvents = sortedEvents.filter((e) => e.eventType === "diving");
   const relayEvents = sortedEvents.filter((e) => e.eventType === "relay");
+
+  // Get events based on current filter
+  const filteredEvents = useMemo(() => {
+    if (eventFilter === "swimming") return swimmingEvents;
+    if (eventFilter === "diving") return divingEvents;
+    if (eventFilter === "relays") return relayEvents;
+    return sortedEvents;
+  }, [eventFilter, swimmingEvents, divingEvents, relayEvents, sortedEvents]);
+
+  const currentEventIndex = selectedEventId
+    ? filteredEvents.findIndex((e) => e.id === selectedEventId)
+    : -1;
+
+  // Initialize selected event to first event if none selected or when filter changes
+  useEffect(() => {
+    if (filteredEvents.length > 0) {
+      // If current selection is not in filtered events, or no selection, pick first
+      if (!selectedEventId || !filteredEvents.find((e) => e.id === selectedEventId)) {
+        setSelectedEventId(filteredEvents[0].id);
+      }
+    }
+  }, [eventFilter, filteredEvents, selectedEventId]);
+
+  const handlePreviousEvent = () => {
+    if (currentEventIndex > 0) {
+      setSelectedEventId(filteredEvents[currentEventIndex - 1].id);
+    }
+  };
+
+  const handleNextEvent = () => {
+    if (currentEventIndex < filteredEvents.length - 1) {
+      setSelectedEventId(filteredEvents[currentEventIndex + 1].id);
+    }
+  };
+
+  const handleEventSelect = (eventId: string) => {
+    setSelectedEventId(eventId);
+  };
+
+  // Helper to get team color style
+  const getTeamColorStyle = (primaryColor: string | null) => {
+    if (!primaryColor) return {};
+    return { color: primaryColor, fontWeight: 600 };
+  };
 
   const handleSimulate = async () => {
     setIsSimulating(true);
@@ -252,23 +306,81 @@ export function SimulateMeetViewer({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="all" className="w-full">
-            <TabsList>
-              <TabsTrigger value="all">All Events</TabsTrigger>
-              <TabsTrigger value="swimming">Swimming</TabsTrigger>
-              <TabsTrigger value="diving">Diving</TabsTrigger>
-              <TabsTrigger value="relays">Relays</TabsTrigger>
-            </TabsList>
+          <Tabs defaultValue="all" className="w-full" onValueChange={setEventFilter}>
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="all">All Events</TabsTrigger>
+                <TabsTrigger value="swimming">Swimming</TabsTrigger>
+                <TabsTrigger value="diving">Diving</TabsTrigger>
+                <TabsTrigger value="relays">Relays</TabsTrigger>
+              </TabsList>
+              
+              {/* Event Navigation */}
+              {filteredEvents.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handlePreviousEvent}
+                    disabled={currentEventIndex <= 0}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <Select
+                    value={selectedEventId || "all"}
+                    onValueChange={(value) => {
+                      if (value === "all") {
+                        setSelectedEventId(null);
+                      } else {
+                        setSelectedEventId(value);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[200px]">
+                      <SelectValue placeholder="Select event..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Show All Events</SelectItem>
+                      {filteredEvents.map((event) => (
+                        <SelectItem key={event.id} value={event.id}>
+                          {event.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNextEvent}
+                    disabled={currentEventIndex >= filteredEvents.length - 1}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  {selectedEventId && (
+                    <span className="text-sm text-slate-500 ml-2">
+                      {currentEventIndex + 1} of {filteredEvents.length}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
 
             <TabsContent value="all" className="mt-4">
               <div className="space-y-4">
-                {sortedEvents.map((event) => {
+                {(selectedEventId
+                  ? sortedEvents.filter((e) => e.id === selectedEventId)
+                  : sortedEvents
+                ).map((event) => {
                   if (event.eventType === "relay") {
                     const relays = relaysByEvent[event.id] || [];
                     const sortedRelays = sortEventResults(relays, "relay") as typeof meet.relayEntries;
 
                     return (
-                      <div key={event.id} className="border rounded-lg p-4">
+                      <div 
+                        key={event.id} 
+                        id={`event-${event.id}`} 
+                        className="border rounded-lg p-4 border-slate-200"
+                      >
                         <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                         {sortedRelays.length === 0 ? (
                           <p className="text-slate-500 text-sm">No relays entered</p>
@@ -300,9 +412,13 @@ export function SimulateMeetViewer({
                                         <span className="text-slate-400">-</span>
                                       )}
                                     </TableCell>
-                                    <TableCell>{relay.team.name}</TableCell>
+                                    <TableCell>
+                                      <span style={getTeamColorStyle(relay.team.primaryColor)}>
+                                        {relay.team.name}
+                                      </span>
+                                    </TableCell>
                                     <TableCell className="text-right font-mono">
-                                      {relay.seedTime || "N/A"}
+                                      {relay.seedTime ? normalizeTimeFormat(relay.seedTime) : "N/A"}
                                     </TableCell>
                                     <TableCell className="text-right font-semibold">
                                       {place <= meet.scoringPlaces ? points : 0}
@@ -320,7 +436,11 @@ export function SimulateMeetViewer({
                     const sortedLineups = sortEventResults(lineups, event.eventType) as typeof meet.meetLineups;
 
                     return (
-                      <div key={event.id} className="border rounded-lg p-4">
+                      <div 
+                        key={event.id} 
+                        id={`event-${event.id}`} 
+                        className="border rounded-lg p-4 border-slate-200"
+                      >
                         <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                         {sortedLineups.length === 0 ? (
                           <p className="text-slate-500 text-sm">No entries</p>
@@ -359,9 +479,13 @@ export function SimulateMeetViewer({
                                         lineup.athlete.lastName
                                       )}
                                     </TableCell>
-                                    <TableCell>{lineup.athlete.team.name}</TableCell>
+                                    <TableCell>
+                                    <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
+                                      {lineup.athlete.team.name}
+                                    </span>
+                                  </TableCell>
                                     <TableCell className="text-right font-mono">
-                                      {lineup.seedTime || "N/A"}
+                                      {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                     </TableCell>
                                     <TableCell className="text-right font-semibold">
                                       {place <= meet.scoringPlaces ? points : 0}
@@ -381,12 +505,19 @@ export function SimulateMeetViewer({
 
             <TabsContent value="swimming" className="mt-4">
               <div className="space-y-4">
-                {swimmingEvents.map((event) => {
+                {(selectedEventId
+                  ? swimmingEvents.filter((e) => e.id === selectedEventId)
+                  : swimmingEvents
+                ).map((event) => {
                   const lineups = lineupsByEvent[event.id] || [];
                   const sortedLineups = sortEventResults(lineups, "individual") as typeof meet.meetLineups;
 
                   return (
-                    <div key={event.id} className="border rounded-lg p-4">
+                    <div 
+                      key={event.id} 
+                      id={`event-${event.id}`} 
+                      className="border rounded-lg p-4 border-slate-200"
+                    >
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                       {sortedLineups.length === 0 ? (
                         <p className="text-slate-500 text-sm">No entries</p>
@@ -425,7 +556,11 @@ export function SimulateMeetViewer({
                                       lineup.athlete.lastName
                                     )}
                                   </TableCell>
-                                  <TableCell>{lineup.athlete.team.name}</TableCell>
+                                  <TableCell>
+                                    <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
+                                      {lineup.athlete.team.name}
+                                    </span>
+                                  </TableCell>
                                   <TableCell className="text-right font-mono">
                                     {lineup.seedTime || "N/A"}
                                   </TableCell>
@@ -446,12 +581,19 @@ export function SimulateMeetViewer({
 
             <TabsContent value="diving" className="mt-4">
               <div className="space-y-4">
-                {divingEvents.map((event) => {
+                {(selectedEventId
+                  ? divingEvents.filter((e) => e.id === selectedEventId)
+                  : divingEvents
+                ).map((event) => {
                   const lineups = lineupsByEvent[event.id] || [];
                   const sortedLineups = sortEventResults(lineups, "diving") as typeof meet.meetLineups;
 
                   return (
-                    <div key={event.id} className="border rounded-lg p-4">
+                    <div 
+                      key={event.id} 
+                      id={`event-${event.id}`} 
+                      className="border rounded-lg p-4 border-slate-200"
+                    >
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                       {sortedLineups.length === 0 ? (
                         <p className="text-slate-500 text-sm">No entries</p>
@@ -490,7 +632,11 @@ export function SimulateMeetViewer({
                                       lineup.athlete.lastName
                                     )}
                                   </TableCell>
-                                  <TableCell>{lineup.athlete.team.name}</TableCell>
+                                  <TableCell>
+                                    <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
+                                      {lineup.athlete.team.name}
+                                    </span>
+                                  </TableCell>
                                   <TableCell className="text-right font-mono">
                                     {lineup.seedTime || "N/A"}
                                   </TableCell>
@@ -511,12 +657,19 @@ export function SimulateMeetViewer({
 
             <TabsContent value="relays" className="mt-4">
               <div className="space-y-4">
-                {relayEvents.map((event) => {
+                {(selectedEventId
+                  ? relayEvents.filter((e) => e.id === selectedEventId)
+                  : relayEvents
+                ).map((event) => {
                   const relays = relaysByEvent[event.id] || [];
                   const sortedRelays = sortEventResults(relays, "relay") as typeof meet.relayEntries;
 
                   return (
-                    <div key={event.id} className="border rounded-lg p-4">
+                    <div 
+                      key={event.id} 
+                      id={`event-${event.id}`} 
+                      className="border rounded-lg p-4 border-slate-200"
+                    >
                       <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                       {sortedRelays.length === 0 ? (
                         <p className="text-slate-500 text-sm">No relays entered</p>
@@ -548,7 +701,11 @@ export function SimulateMeetViewer({
                                       <span className="text-slate-400">-</span>
                                     )}
                                   </TableCell>
-                                  <TableCell>{relay.team.name}</TableCell>
+                                  <TableCell>
+                                    <span style={getTeamColorStyle(relay.team.primaryColor)}>
+                                      {relay.team.name}
+                                    </span>
+                                  </TableCell>
                                   <TableCell className="text-right font-mono">
                                     {relay.seedTime || "N/A"}
                                   </TableCell>

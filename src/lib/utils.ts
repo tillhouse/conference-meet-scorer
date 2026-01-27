@@ -27,6 +27,7 @@ export function parseTimeToSeconds(timeStr: string): number {
 }
 
 // Format seconds to time string (e.g., 255.32 -> "4:15.32")
+// Format: mm:ss.00 (no leading zeros for minutes, always 2 decimal places)
 export function formatSecondsToTime(seconds: number, isDiving: boolean = false): string {
   if (isDiving) {
     return seconds.toFixed(2);
@@ -38,7 +39,41 @@ export function formatSecondsToTime(seconds: number, isDiving: boolean = false):
   
   const mins = Math.floor(seconds / 60);
   const secs = (seconds % 60).toFixed(2).padStart(5, "0");
+  // No leading zero for minutes
   return `${mins}:${secs}`;
+}
+
+// Normalize time string to mm:ss.00 format (no leading zeros for minutes, always 2 decimal places)
+// Handles various input formats: "04:24.1", "4:24.1", "4:24.10", "04:24.10", etc.
+export function normalizeTimeFormat(timeStr: string): string {
+  if (!timeStr) return timeStr;
+  const str = String(timeStr).trim();
+  
+  // If it's a diving score (no colon), return as-is
+  if (!str.includes(":")) {
+    return str;
+  }
+  
+  // Parse the time
+  const parts = str.split(":");
+  if (parts.length !== 2) {
+    return str; // Return original if format is unexpected
+  }
+  
+  const minutes = parseInt(parts[0], 10);
+  const secondsStr = parts[1];
+  
+  // Parse seconds and ensure 2 decimal places
+  const seconds = parseFloat(secondsStr);
+  if (isNaN(seconds) || isNaN(minutes)) {
+    return str; // Return original if parsing fails
+  }
+  
+  // Format seconds with 2 decimal places, padded to 5 characters (SS.00)
+  const formattedSeconds = seconds.toFixed(2).padStart(5, "0");
+  
+  // Return without leading zero for minutes
+  return `${minutes}:${formattedSeconds}`;
 }
 
 // Format athlete name (Last, First -> First Last)

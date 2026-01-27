@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatName, formatSecondsToTime } from "@/lib/utils";
+import { formatName, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
 
 interface Meet {
   id: string;
@@ -382,7 +382,11 @@ export function ResultsViewer({
                                   </TableCell>
                                   <TableCell>{relay.team.name}</TableCell>
                                   <TableCell className="text-right font-mono">
-                                    {relay.finalTime || relay.seedTime || "N/A"}
+                                    {relay.finalTime 
+                                      ? normalizeTimeFormat(relay.finalTime)
+                                      : relay.seedTime 
+                                      ? normalizeTimeFormat(relay.seedTime)
+                                      : "N/A"}
                                   </TableCell>
                                   <TableCell className="text-right font-semibold">
                                     {relay.points || 0}
@@ -432,7 +436,7 @@ export function ResultsViewer({
                                           </TableCell>
                                           <TableCell>{lineup.athlete.team.name}</TableCell>
                                           <TableCell className="text-right font-mono">
-                                            {lineup.seedTime || "N/A"}
+                                            {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                           </TableCell>
                                         </TableRow>
                                       ))}
@@ -496,7 +500,11 @@ export function ResultsViewer({
                                           </TableCell>
                                           <TableCell>{lineup.athlete.team.name}</TableCell>
                                           <TableCell className="text-right font-mono">
-                                            {lineup.finalTime || lineup.seedTime || "N/A"}
+                                            {lineup.finalTime 
+                                              ? normalizeTimeFormat(lineup.finalTime)
+                                              : lineup.seedTime 
+                                              ? normalizeTimeFormat(lineup.seedTime)
+                                              : "N/A"}
                                           </TableCell>
                                           <TableCell className="text-right font-semibold">
                                             {lineup.points || 0}
@@ -557,7 +565,7 @@ export function ResultsViewer({
                                         </TableCell>
                                         <TableCell>{lineup.athlete.team.name}</TableCell>
                                         <TableCell className="text-right font-mono">
-                                          {lineup.seedTime || "N/A"}
+                                          {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                         </TableCell>
                                       </TableRow>
                                     ))}
@@ -621,7 +629,11 @@ export function ResultsViewer({
                                         </TableCell>
                                         <TableCell>{lineup.athlete.team.name}</TableCell>
                                         <TableCell className="text-right font-mono">
-                                          {lineup.finalTime || lineup.seedTime || "N/A"}
+                                          {lineup.finalTime 
+                                            ? normalizeTimeFormat(lineup.finalTime)
+                                            : lineup.seedTime 
+                                            ? normalizeTimeFormat(lineup.seedTime)
+                                            : "N/A"}
                                         </TableCell>
                                         <TableCell className="text-right font-semibold">
                                           {lineup.points || 0}
@@ -681,7 +693,7 @@ export function ResultsViewer({
                                         </TableCell>
                                         <TableCell>{lineup.athlete.team.name}</TableCell>
                                         <TableCell className="text-right font-mono">
-                                          {lineup.seedTime || "N/A"}
+                                          {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                         </TableCell>
                                       </TableRow>
                                     ))}
@@ -745,7 +757,11 @@ export function ResultsViewer({
                                         </TableCell>
                                         <TableCell>{lineup.athlete.team.name}</TableCell>
                                         <TableCell className="text-right font-mono">
-                                          {lineup.finalTime || lineup.seedTime || "N/A"}
+                                          {lineup.finalTime 
+                                            ? normalizeTimeFormat(lineup.finalTime)
+                                            : lineup.seedTime 
+                                            ? normalizeTimeFormat(lineup.seedTime)
+                                            : "N/A"}
                                         </TableCell>
                                         <TableCell className="text-right font-semibold">
                                           {lineup.points || 0}
@@ -808,7 +824,11 @@ export function ResultsViewer({
                                   </TableCell>
                                   <TableCell>{relay.team.name}</TableCell>
                                   <TableCell className="text-right font-mono">
-                                    {relay.finalTime || relay.seedTime || "N/A"}
+                                    {relay.finalTime 
+                                      ? normalizeTimeFormat(relay.finalTime)
+                                      : relay.seedTime 
+                                      ? normalizeTimeFormat(relay.seedTime)
+                                      : "N/A"}
                                   </TableCell>
                                   <TableCell className="text-right font-semibold">
                                     {relay.points || 0}

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
-const createMeetSchema = z.object({
+const updateMeetSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
   date: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
@@ -22,25 +22,78 @@ const createMeetSchema = z.object({
   eventIds: z.array(z.string()).min(1),
 });
 
-export async function POST(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ meetId: string }> }
+) {
   try {
+    const { meetId } = await params;
+
+    const meet = await prisma.meet.findUnique({
+      where: { id: meetId },
+      include: {
+        meetTeams: {
+          include: {
+            team: true,
+          },
+        },
+      },
+    });
+
+    if (!meet) {
+      return NextResponse.json({ error: "Meet not found" }, { status: 404 });
+    }
+
+    // Serialize date properly for JSON
+    const serializedMeet = {
+      ...meet,
+      date: meet.date 
+        ? (meet.date instanceof Date ? meet.date.toISOString() : meet.date)
+        : null,
+      createdAt: meet.createdAt instanceof Date ? meet.createdAt.toISOString() : meet.createdAt,
+      updatedAt: meet.updatedAt instanceof Date ? meet.updatedAt.toISOString() : meet.updatedAt,
+    };
+
+    return NextResponse.json(serializedMeet);
+  } catch (error) {
+    console.error("Error fetching meet:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch meet" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ meetId: string }> }
+) {
+  try {
+    const { meetId } = await params;
     const body = await request.json();
-    console.log("Received meet data:", JSON.stringify(body, null, 2));
-    const data = createMeetSchema.parse(body);
-    console.log("Parsed data:", JSON.stringify(data, null, 2));
+    const data = updateMeetSchema.parse(body);
+
+    // Verify meet exists
+    const existingMeet = await prisma.meet.findUnique({
+      where: { id: meetId },
+      include: {
+        meetTeams: true,
+      },
+    });
+
+    if (!existingMeet) {
+      return NextResponse.json({ error: "Meet not found" }, { status: 404 });
+    }
 
     // Ensure all selected events exist in the database
-    // eventIds might be actual IDs or event names (if events don't exist yet)
     const eventNames: string[] = [];
     const eventIds: string[] = [];
 
-    // Separate IDs from names (IDs are typically longer and contain dashes, names are short like "50 FR")
+    // Separate IDs from names
     for (const item of data.eventIds) {
       if (item.length > 10 || item.includes("-")) {
-        // Likely an actual ID
         eventIds.push(item);
       } else {
-        // Likely an event name
         eventNames.push(item);
       }
     }
@@ -58,7 +111,7 @@ export async function POST(request: NextRequest) {
     const existingEventNames = new Set(existingEvents.map((e) => e.name));
     const existingEventIds = new Set(existingEvents.map((e) => e.id));
 
-    // Create missing events (only those that are names and don't exist)
+    // Create missing events
     const eventsToCreate = eventNames.filter((name) => !existingEventNames.has(name));
     if (eventsToCreate.length > 0) {
       await prisma.event.createMany({
@@ -86,8 +139,9 @@ export async function POST(request: NextRequest) {
 
     const finalEventIds = allEvents.map((e) => e.id);
 
-    // Create the meet
-    const meet = await prisma.meet.create({
+    // Update the meet
+    const meet = await prisma.meet.update({
+      where: { id: meetId },
       data: {
         name: data.name,
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
@@ -109,15 +163,32 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Create meet teams
-    await prisma.meetTeam.createMany({
-      data: data.teamIds.map((teamId) => ({
-        meetId: meet.id,
-        teamId,
-      })),
-    });
+    // Update meet teams - remove teams that are no longer selected
+    const currentTeamIds = existingMeet.meetTeams.map((mt) => mt.teamId);
+    const teamsToRemove = currentTeamIds.filter((teamId) => !data.teamIds.includes(teamId));
+    const teamsToAdd = data.teamIds.filter((teamId) => !currentTeamIds.includes(teamId));
 
-    return NextResponse.json(meet, { status: 201 });
+    // Remove teams
+    if (teamsToRemove.length > 0) {
+      await prisma.meetTeam.deleteMany({
+        where: {
+          meetId: meetId,
+          teamId: { in: teamsToRemove },
+        },
+      });
+    }
+
+    // Add new teams
+    if (teamsToAdd.length > 0) {
+      await prisma.meetTeam.createMany({
+        data: teamsToAdd.map((teamId) => ({
+          meetId: meetId,
+          teamId,
+        })),
+      });
+    }
+
+    return NextResponse.json(meet);
   } catch (error) {
     if (error instanceof z.ZodError) {
       console.error("Validation error:", error.errors);
@@ -127,40 +198,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.error("Error creating meet:", error);
+    console.error("Error updating meet:", error);
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to create meet", details: errorMessage },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET() {
-  try {
-    const meets = await prisma.meet.findMany({
-      include: {
-        meetTeams: {
-          include: {
-            team: true,
-          },
-        },
-        _count: {
-          select: {
-            meetTeams: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
-
-    return NextResponse.json(meets);
-  } catch (error) {
-    console.error("Error fetching meets:", error);
-    return NextResponse.json(
-      { error: "Failed to fetch meets" },
+      { error: "Failed to update meet", details: errorMessage },
       { status: 500 }
     );
   }

@@ -33,13 +33,20 @@ export async function GET(
       },
     });
 
-    // Parse members from JSON
-    const relays = relayEntries.map((entry) => ({
-      eventId: entry.eventId,
-      members: entry.members ? (JSON.parse(entry.members) as string[]) : [null, null, null, null],
-      times: entry.seedTime ? [entry.seedTime] : [null, null, null, null], // For now, store total time
-      useRelaySplits: [false, true, true, true], // Default, could be stored separately if needed
-    }));
+    // Parse members, leg times, and useRelaySplits from JSON
+    const relays = relayEntries.map((entry) => {
+      const members = entry.members ? (JSON.parse(entry.members) as string[]) : [null, null, null, null];
+      const legTimes = entry.legTimes ? (JSON.parse(entry.legTimes) as (string | null)[]) : [null, null, null, null];
+      const useRelaySplits = entry.useRelaySplits ? (JSON.parse(entry.useRelaySplits) as boolean[]) : [false, true, true, true];
+      
+      return {
+        eventId: entry.event.name, // Return event name, not database ID
+        eventDbId: entry.eventId, // Keep database ID for reference
+        members,
+        times: legTimes,
+        useRelaySplits,
+      };
+    });
 
     return NextResponse.json({ relays });
   } catch (error) {
@@ -58,7 +65,10 @@ export async function POST(
   try {
     const { meetId, teamId } = await params;
     const body = await request.json();
+    console.log("Received relay save request:", { meetId, teamId, relayCount: body.relays?.length });
+    
     const data = saveRelaySchema.parse(body);
+    console.log("Parsed relay data:", { relayCount: data.relays.length });
 
     // Verify meet exists
     const meet = await prisma.meet.findUnique({
@@ -107,20 +117,14 @@ export async function POST(
     }
 
     // Ensure relay events exist
+    // relay.eventId is the event name (e.g., "200 MR"), not the database ID
     for (const relay of data.relays) {
-      let event = await prisma.event.findUnique({
-        where: { id: relay.eventId },
+      let event = await prisma.event.findFirst({
+        where: { name: relay.eventId },
       });
 
       if (!event) {
-        // Try to find by name
-        event = await prisma.event.findFirst({
-          where: { name: relay.eventId },
-        });
-      }
-
-      if (!event) {
-        // Create the relay event
+        // Create the relay event if it doesn't exist
         event = await prisma.event.create({
           data: {
             name: relay.eventId,
@@ -161,16 +165,28 @@ export async function POST(
         }
       }
 
-      // Get event ID (might be name or ID)
-      let event = await prisma.event.findUnique({
-        where: { id: relay.eventId },
+      // relay.eventId is the event name (e.g., "200 MR")
+      let event = await prisma.event.findFirst({
+        where: { name: relay.eventId },
       });
       if (!event) {
-        event = await prisma.event.findFirst({
-          where: { name: relay.eventId },
-        });
+        console.log(`Event not found, creating: ${relay.eventId}`);
+        // Try to create it
+        try {
+          event = await prisma.event.create({
+            data: {
+              name: relay.eventId,
+              fullName: relay.eventId,
+              eventType: "relay",
+              sortOrder: 0,
+            },
+          });
+          console.log(`Created missing event: ${relay.eventId} with ID: ${event.id}`);
+        } catch (createError) {
+          console.error(`Failed to create event ${relay.eventId}:`, createError);
+          continue;
+        }
       }
-      if (!event) continue;
 
       entriesToCreate.push({
         meetId,
@@ -179,6 +195,8 @@ export async function POST(
         seedTime: totalTime,
         seedTimeSeconds: totalSeconds,
         members: JSON.stringify(relay.members),
+        legTimes: JSON.stringify(relay.times),
+        useRelaySplits: JSON.stringify(relay.useRelaySplits),
       });
     }
 
@@ -202,8 +220,40 @@ export async function POST(
     }
 
     console.error("Error saving relays:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to save relays" },
+      { 
+        error: "Failed to save relays",
+        details: errorMessage,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ meetId: string; teamId: string }> }
+) {
+  try {
+    const { meetId, teamId } = await params;
+
+    // Delete all relay entries for this team
+    await prisma.relayEntry.deleteMany({
+      where: {
+        meetId,
+        teamId,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: "Relays cleared successfully",
+    });
+  } catch (error) {
+    console.error("Error clearing relays:", error);
+    return NextResponse.json(
+      { error: "Failed to clear relays" },
       { status: 500 }
     );
   }
