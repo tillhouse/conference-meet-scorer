@@ -147,7 +147,12 @@ export async function POST(
           ],
         },
       });
-      events.push(...allEvents.filter((e) => !events.some((ex) => ex.id === e.id)));
+      // Add new events that weren't already in the events array
+      allEvents.forEach((e) => {
+        if (!events.some((ex) => ex.id === e.id)) {
+          events.push(e);
+        }
+      });
     }
 
     // Validate event limits for each athlete
@@ -213,20 +218,30 @@ export async function POST(
         }
 
         // Get athlete's time for this event
-        const athleteEvent = await prisma.athleteEvent.findFirst({
-          where: {
-            athleteId: athlete.id,
-            eventId: event.id,
-            isRelaySplit: false,
-          },
-        });
+        let seedTime: string | null = null;
+        let seedTimeSeconds: number | null = null;
+        
+        try {
+          const athleteEvent = await prisma.athleteEvent.findFirst({
+            where: {
+              athleteId: athlete.id,
+              eventId: event.id,
+              isRelaySplit: false,
+            },
+          });
+          seedTime = athleteEvent?.time || null;
+          seedTimeSeconds = athleteEvent?.timeSeconds || null;
+        } catch (e) {
+          console.warn(`[Lineup Save] Could not fetch athlete event time for ${athlete.firstName} ${athlete.lastName} in ${event.name}:`, e);
+          // Continue without seed time
+        }
 
         lineupsToCreate.push({
           meetId,
           athleteId,
-          eventId,
-          seedTime: athleteEvent?.time || null,
-          seedTimeSeconds: athleteEvent?.timeSeconds || null,
+          eventId: event.id,
+          seedTime,
+          seedTimeSeconds,
         });
       }
     }
