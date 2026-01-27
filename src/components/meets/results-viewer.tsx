@@ -186,16 +186,27 @@ export function ResultsViewer({
     eventType: string
   ) => {
     return [...results].sort((a, b) => {
-      if (!a.finalTimeSeconds && !b.finalTimeSeconds) return 0;
-      if (!a.finalTimeSeconds) return 1;
-      if (!b.finalTimeSeconds) return -1;
+      // First, sort by place if available
+      if (a.place && b.place) {
+        return a.place - b.place;
+      }
+      if (a.place) return -1;
+      if (b.place) return 1;
+
+      // Then sort by time/score
+      const aTime = a.finalTimeSeconds ?? a.seedTimeSeconds;
+      const bTime = b.finalTimeSeconds ?? b.seedTimeSeconds;
+      
+      if (!aTime && !bTime) return 0;
+      if (!aTime) return 1;
+      if (!bTime) return -1;
 
       if (eventType === "diving") {
         // Diving: higher score is better
-        return b.finalTimeSeconds - a.finalTimeSeconds;
+        return bTime - aTime;
       } else {
         // Swimming: lower time is better
-        return a.finalTimeSeconds - b.finalTimeSeconds;
+        return aTime - bTime;
       }
     });
   };
@@ -321,7 +332,7 @@ export function ResultsViewer({
                       <div key={event.id} className="border rounded-lg p-4">
                         <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
                         {sortedRelays.length === 0 ? (
-                          <p className="text-slate-500 text-sm">No results yet</p>
+                          <p className="text-slate-500 text-sm">No relays entered</p>
                         ) : (
                           <Table>
                             <TableHeader>
@@ -336,7 +347,16 @@ export function ResultsViewer({
                               {sortedRelays.map((relay, idx) => (
                                 <TableRow key={relay.id}>
                                   <TableCell className="font-bold">
-                                    {relay.place || idx + 1}
+                                    {relay.place ? (
+                                      <>
+                                        {relay.place}
+                                        {relay.place === 1 && " 🥇"}
+                                        {relay.place === 2 && " 🥈"}
+                                        {relay.place === 3 && " 🥉"}
+                                      </>
+                                    ) : (
+                                      <span className="text-slate-400">-</span>
+                                    )}
                                   </TableCell>
                                   <TableCell>{relay.team.name}</TableCell>
                                   <TableCell className="text-right font-mono">
@@ -363,7 +383,43 @@ export function ResultsViewer({
                           <p className="text-slate-500 text-sm">No results yet</p>
                         ) : (
                           <div className="space-y-4">
-                            {/* Group by finals */}
+                            {/* Show entries without places first (seed times) */}
+                            {sortedLineups.filter((l) => !l.place).length > 0 && (
+                              <div className="border rounded-lg">
+                                <div className="p-2 font-semibold text-sm bg-slate-50 border-slate-200 border-b">
+                                  Entries (No Results Yet)
+                                </div>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Athlete</TableHead>
+                                      <TableHead>Team</TableHead>
+                                      <TableHead className="text-right">Seed Time</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {sortedLineups
+                                      .filter((l) => !l.place)
+                                      .map((lineup) => (
+                                        <TableRow key={lineup.id}>
+                                          <TableCell>
+                                            {formatName(
+                                              lineup.athlete.firstName,
+                                              lineup.athlete.lastName
+                                            )}
+                                          </TableCell>
+                                          <TableCell>{lineup.athlete.team.name}</TableCell>
+                                          <TableCell className="text-right font-mono">
+                                            {lineup.seedTime || "N/A"}
+                                          </TableCell>
+                                        </TableRow>
+                                      ))}
+                                  </TableBody>
+                                </Table>
+                              </div>
+                            )}
+
+                            {/* Group by finals for entries with places */}
                             {[1, 9, 17, 25].map((startPlace) => {
                               const finalResults = sortedLineups.filter(
                                 (l) =>
