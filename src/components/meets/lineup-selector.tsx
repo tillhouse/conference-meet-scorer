@@ -177,16 +177,23 @@ export function LineupSelector({
       if (!response.ok) {
         let error;
         const responseText = await response.text();
+        console.error("Response status:", response.status);
+        console.error("Response text:", responseText);
+        
         try {
           error = JSON.parse(responseText);
         } catch (e) {
           // Response might not be JSON
-          error = { error: responseText || `HTTP ${response.status}: ${response.statusText}` };
+          console.error("Failed to parse response as JSON:", e);
+          error = { 
+            error: responseText || `HTTP ${response.status}: ${response.statusText}`,
+            rawResponse: responseText,
+          };
         }
-        console.error("Lineup save error:", error);
+        console.error("Lineup save error object:", error);
         const errorMessage = error.details 
           ? `Validation error: ${JSON.stringify(error.details)}`
-          : error.error || "Failed to save lineups";
+          : error.message || error.error || `HTTP ${response.status}: ${response.statusText}`;
         throw new Error(errorMessage);
       }
 

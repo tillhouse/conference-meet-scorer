@@ -268,8 +268,14 @@ export async function POST(
       skippedDetails: skippedLineups,
     });
   } catch (error) {
+    console.error("=".repeat(50));
+    console.error("[Lineup Save] ERROR CAUGHT:");
+    console.error("Error type:", error?.constructor?.name);
+    console.error("Error message:", error instanceof Error ? error.message : String(error));
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
+    console.error("=".repeat(50));
+    
     if (error instanceof z.ZodError) {
-      console.error(`[Lineup Save] Validation error:`, error.errors);
       return NextResponse.json(
         { 
           error: "Invalid data", 
@@ -280,12 +286,11 @@ export async function POST(
       );
     }
 
-    console.error("Error saving lineups:", error);
-    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     return NextResponse.json(
       { 
         error: "Failed to save lineups",
-        details: error instanceof Error ? error.message : String(error),
+        message: error instanceof Error ? error.message : String(error),
+        type: error?.constructor?.name || typeof error,
       },
       { status: 500 }
     );
