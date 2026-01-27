@@ -110,19 +110,29 @@ export default async function MeetResultsPage({
       </div>
 
       {/* Debug Info */}
-      {process.env.NODE_ENV === "development" && (
-        <Card className="bg-yellow-50 border-yellow-200">
-          <CardHeader>
-            <CardTitle className="text-sm">Debug Info</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm">
-            <p>MeetLineups: {meet.meetLineups.length}</p>
-            <p>RelayEntries: {meet.relayEntries.length}</p>
-            <p>Selected Events: {selectedEvents.length}</p>
-            <p>Events Found: {events.length}</p>
-          </CardContent>
-        </Card>
-      )}
+      <Card className="bg-yellow-50 border-yellow-200">
+        <CardHeader>
+          <CardTitle className="text-sm">Debug Info</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm space-y-2">
+          <p>MeetLineups: {meet.meetLineups.length}</p>
+          <p>RelayEntries: {meet.relayEntries.length}</p>
+          <p>Selected Events: {selectedEvents.length}</p>
+          <p>Events Found: {events.length}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={async () => {
+              const response = await fetch(`/api/meets/${id}/debug`);
+              const data = await response.json();
+              console.log("Full debug data:", data);
+              alert(`Check console (F12) for full debug data.\n\nLineups: ${data.meetLineupsCount}\nRelays: ${data.relayEntriesCount}`);
+            }}
+          >
+            Fetch Full Debug Data
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Results Viewer */}
       <ResultsViewer
