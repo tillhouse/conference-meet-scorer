@@ -97,12 +97,22 @@ export default async function MeetDetailPage({
               Edit
             </Link>
           </Button>
-          <Button asChild>
-            <Link href={`/meets/${id}/roster`}>
-              <Users className="h-4 w-4 mr-2" />
-              Set Rosters
-            </Link>
-          </Button>
+          {meet.status === "draft" && (
+            <>
+              <Button asChild>
+                <Link href={`/meets/${id}/roster`}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Set Rosters
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/meets/${id}/lineups`}>
+                  <ListChecks className="h-4 w-4 mr-2" />
+                  Set Lineups
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
