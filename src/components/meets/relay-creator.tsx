@@ -404,13 +404,13 @@ export function RelayCreator({
 
                           {/* Athlete Selector */}
                           <Select
-                            value={athleteId || ""}
+                            value={athleteId || "none"}
                             onValueChange={(value) => {
                               const newEntries = { ...relayEntries };
                               if (!newEntries[event.id]) {
                                 newEntries[event.id] = { ...entry };
                               }
-                              newEntries[event.id].athletes[legIndex] = value || null;
+                              newEntries[event.id].athletes[legIndex] = value === "none" ? null : value;
                               setRelayEntries(newEntries);
                             }}
                           >
@@ -418,7 +418,7 @@ export function RelayCreator({
                               <SelectValue placeholder="Select athlete" />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
                               {team.athletes.map((athlete) => (
                                 <SelectItem key={athlete.id} value={athlete.id}>
                                   {formatName(athlete.firstName, athlete.lastName)}
