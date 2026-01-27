@@ -264,8 +264,12 @@ export async function POST(
     }
 
     console.error("Error saving lineups:", error);
+    console.error("Error stack:", error instanceof Error ? error.stack : "No stack trace");
     return NextResponse.json(
-      { error: "Failed to save lineups" },
+      { 
+        error: "Failed to save lineups",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }

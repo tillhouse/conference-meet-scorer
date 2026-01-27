@@ -176,12 +176,12 @@ export function LineupSelector({
 
       if (!response.ok) {
         let error;
+        const responseText = await response.text();
         try {
-          error = await response.json();
+          error = JSON.parse(responseText);
         } catch (e) {
-          // Response might not be JSON or might be empty
-          const text = await response.text();
-          error = { error: text || `HTTP ${response.status}: ${response.statusText}` };
+          // Response might not be JSON
+          error = { error: responseText || `HTTP ${response.status}: ${response.statusText}` };
         }
         console.error("Lineup save error:", error);
         const errorMessage = error.details 
