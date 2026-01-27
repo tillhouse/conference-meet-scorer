@@ -132,7 +132,8 @@ export function RosterSelector({
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to save roster");
+        const errorDetails = error.details ? `: ${error.details}` : "";
+        throw new Error((error.error || "Failed to save roster") + errorDetails);
       }
 
       toast.success(`${team.name} roster saved successfully`);

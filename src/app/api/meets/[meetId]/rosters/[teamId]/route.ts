@@ -112,17 +112,33 @@ export async function POST(
     }
 
     // Save the roster selection to MeetTeam
-    await prisma.meetTeam.update({
-      where: {
-        meetId_teamId: {
-          meetId,
-          teamId,
+    try {
+      await prisma.meetTeam.update({
+        where: {
+          meetId_teamId: {
+            meetId,
+            teamId,
+          },
         },
-      },
-      data: {
-        selectedAthletes: JSON.stringify(data.athleteIds),
-      },
-    });
+        data: {
+          selectedAthletes: JSON.stringify(data.athleteIds),
+        },
+      });
+    } catch (updateError: any) {
+      console.error("Error updating MeetTeam:", updateError);
+      // If selectedAthletes field doesn't exist yet, try without it first
+      if (updateError.message?.includes("Unknown argument") || updateError.message?.includes("selectedAthletes")) {
+        // Field might not exist in Prisma client yet - need to regenerate
+        return NextResponse.json(
+          {
+            error: "Database schema needs to be updated. Please regenerate Prisma client.",
+            details: updateError.message,
+          },
+          { status: 500 }
+        );
+      }
+      throw updateError;
+    }
 
     return NextResponse.json({
       success: true,
