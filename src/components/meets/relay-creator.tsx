@@ -238,12 +238,33 @@ export function RelayCreator({
 
     setSaving(true);
     try {
-      const relays = Object.values(relayEntries).map((entry) => ({
-        eventId: entry.eventId,
-        members: entry.athletes,
-        times: entry.times,
-        useRelaySplits: entry.useRelaySplits,
-      }));
+      // Calculate actual times for each leg before saving
+      const relays = Object.values(relayEntries).map((entry) => {
+        const event = relayEvents.find((e) => e.id === entry.eventId);
+        if (!event) return null;
+
+        const calculatedTimes = event.legs.map((stroke, idx) => {
+          // Use custom time if provided, otherwise calculate
+          if (entry.times[idx]) {
+            return entry.times[idx];
+          }
+          return calculateLegTime(
+            entry.athletes[idx],
+            idx,
+            stroke,
+            entry.eventId,
+            entry.useRelaySplits[idx],
+            entry.times[idx]
+          );
+        });
+
+        return {
+          eventId: entry.eventId,
+          members: entry.athletes,
+          times: calculatedTimes,
+          useRelaySplits: entry.useRelaySplits,
+        };
+      }).filter((r) => r !== null) as any[];
 
       const response = await fetch(`/api/meets/${meetId}/relays/${meetTeam.teamId}`, {
         method: "POST",
@@ -475,6 +496,7 @@ export function RelayCreator({
                       <span className="font-mono text-lg font-bold">
                         {(() => {
                           const times = event.legs.map((stroke, idx) => {
+                            // Use custom time if provided, otherwise calculate
                             const time = entry.times[idx] || calculateLegTime(
                               entry.athletes[idx],
                               idx,
@@ -489,6 +511,19 @@ export function RelayCreator({
                           return total > 0 ? formatSecondsToTime(total) : "N/A";
                         })()}
                       </span>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-600">
+                      Leg times: {event.legs.map((stroke, idx) => {
+                        const time = entry.times[idx] || calculateLegTime(
+                          entry.athletes[idx],
+                          idx,
+                          stroke,
+                          event.id,
+                          entry.useRelaySplits[idx],
+                          entry.times[idx]
+                        );
+                        return `${stroke}: ${time || "N/A"}`;
+                      }).join(" • ")}
                     </div>
                   </div>
                 )}
