@@ -63,11 +63,19 @@ export async function POST(request: NextRequest) {
     if (eventsToCreate.length > 0) {
       await prisma.event.createMany({
         data: eventsToCreate.map((name) => {
-          const isDivingEvent = name === "1M" || name === "3M" || name.toLowerCase().includes("platform");
+          const lowerName = name.toLowerCase();
+          const isDivingEvent = lowerName.includes("diving") || lowerName === "1m" || lowerName === "3m" || lowerName.includes("platform");
+          const isRelayEvent = lowerName.includes("relay");
+          let eventType = "individual";
+          if (isDivingEvent) {
+            eventType = "diving";
+          } else if (isRelayEvent) {
+            eventType = "relay";
+          }
           return {
             name,
             fullName: name,
-            eventType: isDivingEvent ? "diving" : "individual",
+            eventType,
             sortOrder: 0,
           };
         }),

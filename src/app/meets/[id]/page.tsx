@@ -3,8 +3,10 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, MapPin, Users, Trophy, Settings, ListChecks, UsersRound } from "lucide-react";
+import { Calendar, MapPin, Users, Settings, ListChecks, UsersRound } from "lucide-react";
 import Link from "next/link";
+import { SimulateMeetViewer } from "@/components/meets/simulate-meet-viewer";
+import { sortEventsByOrder } from "@/lib/event-utils";
 
 export default async function MeetDetailPage({
   params,
@@ -18,10 +20,44 @@ export default async function MeetDetailPage({
     include: {
       meetTeams: {
         include: {
-          team: true,
+          team: {
+            select: {
+              id: true,
+              name: true,
+              primaryColor: true,
+            },
+          },
         },
         orderBy: {
           totalScore: "desc",
+        },
+      },
+      meetLineups: {
+        include: {
+          athlete: {
+            include: {
+              team: {
+                select: {
+                  id: true,
+                  name: true,
+                  primaryColor: true,
+                },
+              },
+            },
+          },
+          event: true,
+        },
+      },
+      relayEntries: {
+        include: {
+          team: {
+            select: {
+              id: true,
+              name: true,
+              primaryColor: true,
+            },
+          },
+          event: true,
         },
       },
       conference: true,
@@ -42,14 +78,21 @@ export default async function MeetDetailPage({
   const selectedEvents = meet.selectedEvents
     ? (JSON.parse(meet.selectedEvents) as string[])
     : [];
-  const events = await prisma.event.findMany({
+  // Fetch all selected events including individual, relay, and diving events
+  const eventsUnsorted = await prisma.event.findMany({
     where: {
       id: { in: selectedEvents },
-    },
-    orderBy: {
-      name: "asc",
+      // No eventType filter - includes all types: individual, relay, diving
     },
   });
+
+  // Get event order (custom order if set, otherwise null)
+  const eventOrder = meet.eventOrder
+    ? (JSON.parse(meet.eventOrder) as string[])
+    : null;
+
+  // Sort events according to custom order or default
+  const events = sortEventsByOrder(eventsUnsorted, eventOrder);
 
   const individualScoring = meet.individualScoring
     ? (JSON.parse(meet.individualScoring) as Record<string, number>)
@@ -57,6 +100,10 @@ export default async function MeetDetailPage({
   const relayScoring = meet.relayScoring
     ? (JSON.parse(meet.relayScoring) as Record<string, number>)
     : {};
+
+  // Check if meet has been simulated (has places/points assigned)
+  const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
+                     meet.relayEntries.some((r) => r.place !== null);
 
   return (
     <div className="space-y-6">
@@ -97,34 +144,6 @@ export default async function MeetDetailPage({
               Edit
             </Link>
           </Button>
-          {meet.status === "draft" && (
-            <>
-              <Button asChild>
-                <Link href={`/meets/${id}/roster`}>
-                  <Users className="h-4 w-4 mr-2" />
-                  Set Rosters
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/meets/${id}/lineups`}>
-                  <ListChecks className="h-4 w-4 mr-2" />
-                  Set Lineups
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/meets/${id}/relays`}>
-                  <UsersRound className="h-4 w-4 mr-2" />
-                  Create Relays
-                </Link>
-              </Button>
-            </>
-          )}
-          <Button variant="outline" asChild>
-            <Link href={`/meets/${id}/results`}>
-              <Trophy className="h-4 w-4 mr-2" />
-              View Results
-            </Link>
-          </Button>
         </div>
       </div>
 
@@ -156,10 +175,10 @@ export default async function MeetDetailPage({
         </Card>
       </div>
 
-      {/* Team Scores */}
-      <Card>
+      {/* Team Standings - Prominently displayed */}
+      <Card className="border-2">
         <CardHeader>
-          <CardTitle>Team Scores</CardTitle>
+          <CardTitle className="text-2xl">Team Standings</CardTitle>
           <CardDescription>
             Current standings for all participating teams
           </CardDescription>
@@ -182,14 +201,16 @@ export default async function MeetDetailPage({
               {meet.meetTeams.map((meetTeam, index) => (
                 <div
                   key={meetTeam.id}
-                  className="grid grid-cols-6 gap-4 items-center py-2 border-b last:border-0"
+                  className="grid grid-cols-6 gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
                 >
-                  <div className="font-bold text-lg">#{index + 1}</div>
-                  <div className="font-medium">{meetTeam.team.name}</div>
-                  <div className="text-right">{meetTeam.individualScore.toFixed(1)}</div>
-                  <div className="text-right">{meetTeam.relayScore.toFixed(1)}</div>
-                  <div className="text-right">{meetTeam.divingScore.toFixed(1)}</div>
-                  <div className="text-right font-bold text-lg">
+                  <div className="font-bold text-xl">#{index + 1}</div>
+                  <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
+                    {meetTeam.team.name}
+                  </div>
+                  <div className="text-right font-medium">{meetTeam.individualScore.toFixed(1)}</div>
+                  <div className="text-right font-medium">{meetTeam.relayScore.toFixed(1)}</div>
+                  <div className="text-right font-medium">{meetTeam.divingScore.toFixed(1)}</div>
+                  <div className="text-right font-bold text-xl">
                     {meetTeam.totalScore.toFixed(1)}
                   </div>
                 </div>
@@ -198,6 +219,49 @@ export default async function MeetDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Meet Results Section - Includes simulation and results display */}
+      <SimulateMeetViewer
+        meet={meet}
+        events={events}
+        individualScoring={individualScoring}
+        relayScoring={relayScoring}
+        eventOrder={eventOrder}
+      />
+
+      {/* Setup Actions - Only show for draft meets */}
+      {meet.status === "draft" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Setup</CardTitle>
+            <CardDescription>
+              Configure rosters, lineups, and relays before simulating
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" asChild>
+                <Link href={`/meets/${id}/roster`}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Set Rosters
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/meets/${id}/lineups`}>
+                  <ListChecks className="h-4 w-4 mr-2" />
+                  Set Lineups
+                </Link>
+              </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/meets/${id}/relays`}>
+                  <UsersRound className="h-4 w-4 mr-2" />
+                  Create Relays
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Meet Configuration */}
       <div className="grid gap-4 md:grid-cols-2">
@@ -254,28 +318,6 @@ export default async function MeetDetailPage({
         </Card>
       </div>
 
-      {/* Selected Events */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Selected Events</CardTitle>
-          <CardDescription>
-            Events that will be competed in this meet
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {events.length === 0 ? (
-            <p className="text-slate-500">No events selected</p>
-          ) : (
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-              {events.map((event) => (
-                <Badge key={event.id} variant="outline" className="justify-center py-1">
-                  {event.name}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

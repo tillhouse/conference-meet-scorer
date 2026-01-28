@@ -9,11 +9,11 @@ import { RelayNavigation } from "@/components/meets/relay-navigation";
 
 // Standard relay events with their leg distances
 const RELAY_EVENTS = [
-  { name: "200 MR", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["50", "50", "50", "50"] },
-  { name: "200 FR", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["50", "50", "50", "50"] },
-  { name: "400 MR", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["100", "100", "100", "100"] },
-  { name: "400 FR", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["100", "100", "100", "100"] },
-  { name: "800 FR", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["200", "200", "200", "200"] },
+  { name: "200 Medley Relay", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["50", "50", "50", "50"] },
+  { name: "200 Free Relay", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["50", "50", "50", "50"] },
+  { name: "400 Medley Relay", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["100", "100", "100", "100"] },
+  { name: "400 Free Relay", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["100", "100", "100", "100"] },
+  { name: "800 Free Relay", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["200", "200", "200", "200"] },
 ];
 
 export default async function MeetRelaysPage({
@@ -178,7 +178,7 @@ export default async function MeetRelaysPage({
         meetId={id}
         teamIds={meet.meetTeams.map((mt) => mt.teamId)}
         backUrl={`/meets/${id}/lineups`}
-        nextUrl={`/meets/${id}/results`}
+        nextUrl={`/meets/${id}`}
       />
     </div>
   );

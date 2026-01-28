@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatName, formatSecondsToTime, parseTimeToSeconds, normalizeTimeFormat } from "@/lib/utils";
+import { sortEventsByOrder } from "@/lib/event-utils";
 import { Play, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -92,6 +93,7 @@ interface SimulateMeetViewerProps {
   events: Event[];
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
+  eventOrder?: string[] | null;
 }
 
 export function SimulateMeetViewer({
@@ -99,12 +101,17 @@ export function SimulateMeetViewer({
   events,
   individualScoring,
   relayScoring,
+  eventOrder,
 }: SimulateMeetViewerProps) {
   const router = useRouter();
   const [isSimulating, setIsSimulating] = useState(false);
-  const [simulated, setSimulated] = useState(false);
+  // Check if meet has been simulated (has places/points assigned)
+  const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
+                     meet.relayEntries.some((r) => r.place !== null);
+  const [simulated, setSimulated] = useState(hasResults);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [eventFilter, setEventFilter] = useState<string>("all");
+  const [showResults, setShowResults] = useState(hasResults);
 
   // Group lineups by event
   const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
@@ -146,16 +153,23 @@ export function SimulateMeetViewer({
 
   const allEvents = Array.from(allEventsMap.values());
 
-  // Sort events by type and name
-  const sortedEvents = [...allEvents].sort((a, b) => {
-    if (a.eventType !== b.eventType) {
-      if (a.eventType === "individual") return -1;
-      if (b.eventType === "individual") return 1;
-      if (a.eventType === "relay") return -1;
-      if (b.eventType === "relay") return 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  // Sort events by custom order if provided, otherwise by type and name
+  let sortedEvents: Event[];
+  if (eventOrder && eventOrder.length > 0) {
+    // Use custom order
+    sortedEvents = sortEventsByOrder(allEvents, eventOrder);
+  } else {
+    // Default sort by type and name
+    sortedEvents = [...allEvents].sort((a, b) => {
+      if (a.eventType !== b.eventType) {
+        if (a.eventType === "individual") return -1;
+        if (b.eventType === "individual") return 1;
+        if (a.eventType === "relay") return -1;
+        if (b.eventType === "relay") return 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }
 
   const swimmingEvents = sortedEvents.filter((e) => e.eventType === "individual");
   const divingEvents = sortedEvents.filter((e) => e.eventType === "diving");
@@ -222,10 +236,8 @@ export function SimulateMeetViewer({
 
       toast.success("Meet simulated successfully!");
       setSimulated(true);
-      // Redirect to results page to see the simulated results
-      setTimeout(() => {
-        router.push(`/meets/${meet.id}/results`);
-      }, 1000);
+      // Refresh the page to get updated data
+      router.refresh();
     } catch (error: any) {
       console.error("Error simulating meet:", error);
       toast.error(error.message || "Failed to simulate meet");
@@ -261,13 +273,13 @@ export function SimulateMeetViewer({
   return (
     <div className="space-y-6">
       {/* Action Card */}
-      <Card>
+      <Card className={hasResults ? "" : "border-2"}>
         <CardHeader>
-          <CardTitle>Simulate Meet Results</CardTitle>
+          <CardTitle>Run Meet Simulation</CardTitle>
           <CardDescription>
-            This will automatically assign places and calculate points based on seed times.
-            Results will be sorted by seed time (fastest to slowest for swimming, highest to
-            lowest for diving).
+            {hasResults 
+              ? "Meet has been simulated. View results below or re-simulate with updated data."
+              : "Simulate the meet results based on seed times. This will assign places and calculate points automatically."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -289,20 +301,33 @@ export function SimulateMeetViewer({
                 </>
               )}
             </div>
-            <Button onClick={handleSimulate} disabled={isSimulating}>
-              <Play className="h-4 w-4 mr-2" />
-              {isSimulating ? "Simulating..." : "Simulate Meet"}
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={handleSimulate} disabled={isSimulating} size={hasResults ? "default" : "lg"}>
+                <Play className="h-4 w-4 mr-2" />
+                {isSimulating ? "Simulating..." : hasResults ? "Re-simulate" : "Simulate Meet"}
+              </Button>
+              {hasResults && (
+                <Button 
+                  onClick={() => setShowResults(!showResults)} 
+                  variant={showResults ? "default" : "outline"}
+                >
+                  {showResults ? "Hide Results" : "Show Results"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Preview of Events */}
+      {/* Results Display - Only show if results exist and are to be displayed */}
+      {showResults && (
       <Card>
         <CardHeader>
-          <CardTitle>Event Preview</CardTitle>
+          <CardTitle>{hasResults ? "Meet Results" : "Event Preview"}</CardTitle>
           <CardDescription>
-            Preview of how results will be simulated based on seed times
+            {hasResults 
+              ? "Simulated results based on seed times. Events are sorted by projected finish order."
+              : "Preview of how results will be simulated based on seed times"}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -726,6 +751,7 @@ export function SimulateMeetViewer({
           </Tabs>
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

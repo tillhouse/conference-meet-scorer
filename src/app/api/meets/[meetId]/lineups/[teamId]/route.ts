@@ -132,9 +132,10 @@ export async function POST(
         .map((name) => ({
           name,
           fullName: name,
-          eventType: name.includes("Relay") || name.includes("MR") || name.includes("FR")
+          const lowerName = name.toLowerCase();
+          const eventType = lowerName.includes("relay")
             ? "relay"
-            : name.includes("1M") || name.includes("3M") || name.includes("Platform")
+            : lowerName.includes("diving") || lowerName.includes("1m") || lowerName.includes("3m") || lowerName.includes("platform")
             ? "diving"
             : "individual",
           sortOrder: 0,

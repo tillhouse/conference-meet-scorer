@@ -148,6 +148,10 @@ model Meet {
   
   // Selected events for this meet (JSON array of event IDs)
   selectedEvents String? // JSON: ["eventId1", "eventId2", ...]
+  
+  // Custom event order (JSON array of event IDs in desired order)
+  // If null, uses default order from Event.sortOrder
+  eventOrder String? // JSON: ["eventId1", "eventId2", ...]
 
   conference   Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
   meetTeams    MeetTeam[]

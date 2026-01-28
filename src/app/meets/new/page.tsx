@@ -58,31 +58,40 @@ interface Event {
 
 // Standard swimming events that should always be available
 const STANDARD_SWIMMING_EVENTS = [
-  "50 FR",
-  "100 FR",
-  "200 FR",
-  "500 FR",
-  "1000 FR",
-  "1650 FR",
-  "50 BK",
-  "100 BK",
-  "200 BK",
-  "50 BR",
-  "100 BR",
-  "200 BR",
-  "50 FL",
-  "100 FL",
-  "200 FL",
-  "100 IM",
-  "200 IM",
-  "400 IM",
+  "50 Free",
+  "100 Free",
+  "200 Free",
+  "500 Free",
+  "1000 Free",
+  "1650 Free",
+  "50 Back",
+  "100 Back",
+  "200 Back",
+  "50 Breast",
+  "100 Breast",
+  "200 Breast",
+  "50 Fly",
+  "100 Fly",
+  "200 Fly",
+  "100 Individual Medley",
+  "200 Individual Medley",
+  "400 Individual Medley",
 ];
 
 // Standard diving events
 const STANDARD_DIVING_EVENTS = [
-  "1M",
-  "3M",
-  "Platform",
+  "1M Diving",
+  "3M Diving",
+  "Platform Diving",
+];
+
+// Standard relay events
+const STANDARD_RELAY_EVENTS = [
+  "200 Medley Relay",
+  "200 Free Relay",
+  "400 Medley Relay",
+  "400 Free Relay",
+  "800 Free Relay",
 ];
 
 export default function NewMeetPage() {
@@ -156,14 +165,25 @@ export default function NewMeetPage() {
   });
 
   const divingEventOptions = STANDARD_DIVING_EVENTS.map((eventName) => {
-    // Check for exact match or variants like "1M (champ)", "1M (dual)"
+    // Match by checking if the event name contains the key part (e.g., "1M", "3M", "Platform")
+    const keyPart = eventName.replace(" Diving", "").toLowerCase();
     const existingEvent = events.find(
-      (e) => e.eventType === "diving" && e.name.startsWith(eventName)
+      (e) => e.eventType === "diving" && e.name.toLowerCase().includes(keyPart)
     );
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
       eventType: "diving",
+      exists: !!existingEvent,
+    };
+  });
+
+  const relayEventOptions = STANDARD_RELAY_EVENTS.map((eventName) => {
+    const existingEvent = events.find((e) => e.name === eventName && e.eventType === "relay");
+    return {
+      id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
+      name: eventName,
+      eventType: "relay",
       exists: !!existingEvent,
     };
   });
@@ -504,6 +524,36 @@ export default function NewMeetPage() {
               <h3 className="font-semibold mb-2">Swimming Events</h3>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto border rounded-lg p-4">
                 {swimmingEventOptions.map((event) => (
+                  <div key={event.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`event-${event.id}`}
+                      checked={selectedEventIds.includes(event.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setValue("eventIds", [...selectedEventIds, event.id]);
+                        } else {
+                          setValue(
+                            "eventIds",
+                            selectedEventIds.filter((id) => id !== event.id)
+                          );
+                        }
+                      }}
+                    />
+                    <Label
+                      htmlFor={`event-${event.id}`}
+                      className="text-sm font-normal cursor-pointer"
+                    >
+                      {event.name}
+                    </Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="font-semibold mb-2">Relay Events</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-48 overflow-y-auto border rounded-lg p-4">
+                {relayEventOptions.map((event) => (
                   <div key={event.id} className="flex items-center space-x-2">
                     <Checkbox
                       id={`event-${event.id}`}
