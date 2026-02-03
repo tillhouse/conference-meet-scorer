@@ -325,13 +325,12 @@ export function ClassYearBreakdown({
   }
 
   return (
-    <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex items-center gap-4">
-        <div className="min-w-[180px]">
-          <label className="text-sm font-medium text-slate-700 mb-1 block">Athlete Type</label>
+    <div className="space-y-4">
+      {/* Summary Cards with Filter - Compact Horizontal Layout */}
+      <div className="flex items-center gap-3">
+        <div className="w-40 flex-shrink-0">
           <Select value={athleteTypeFilter} onValueChange={setAthleteTypeFilter}>
-            <SelectTrigger>
+            <SelectTrigger className="h-9">
               <SelectValue placeholder="All athletes" />
             </SelectTrigger>
             <SelectContent>
@@ -341,15 +340,14 @@ export function ClassYearBreakdown({
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-5">
+        <div className="flex gap-2 flex-1">
         {allYears.map((year) => (
-          <div key={year} className="border rounded-lg p-4 bg-slate-50">
-            <div className="text-sm text-slate-600 mb-1">{YEAR_LABELS[year] || year}</div>
-            <div className="text-2xl font-bold text-slate-900">
-              {yearTotals[year]?.toFixed(1) || "0.0"}
+          <div key={year} className="flex-1 border rounded-md p-2.5 bg-slate-50">
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-xs font-medium text-slate-600">{YEAR_LABELS[year] || year}</div>
+              <div className="text-lg font-bold text-slate-900">
+                {yearTotals[year]?.toFixed(1) || "0.0"}
+              </div>
             </div>
             <div className="text-xs text-slate-500 mt-1">
               {grandTotal > 0
@@ -358,6 +356,7 @@ export function ClassYearBreakdown({
             </div>
           </div>
         ))}
+        </div>
       </div>
 
       {/* Detailed Table */}
@@ -385,15 +384,6 @@ export function ClassYearBreakdown({
                   </button>
                 </TableHead>
               ))}
-              <TableHead className="text-right">
-                <button
-                  onClick={() => handleSort("totalPoints")}
-                  className="flex items-center justify-end hover:text-slate-900 transition-colors w-full"
-                >
-                  Total
-                  {getSortIcon("totalPoints")}
-                </button>
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -436,16 +426,6 @@ export function ClassYearBreakdown({
                     </TableCell>
                   );
                 })}
-                <TableCell className="text-right">
-                  <div className="flex flex-col items-end">
-                    <span className="font-bold text-lg">{teamStats.totalPoints.toFixed(1)}</span>
-                    {relayTotals.get(teamStats.teamId) && (
-                      <span className="text-xs text-slate-500">
-                        +{relayTotals.get(teamStats.teamId)!.toFixed(1)} relay
-                      </span>
-                    )}
-                  </div>
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>

@@ -9,6 +9,7 @@ import { SimulateMeetButton } from "@/components/meets/simulate-meet-button";
 import { ScoreProgressionGraph } from "@/components/meets/score-progression-graph";
 import { ClassYearBreakdown } from "@/components/meets/class-year-breakdown";
 import { MeetNavigation } from "@/components/meets/meet-navigation";
+import { TeamStandings } from "@/components/meets/team-standings";
 import { sortEventsByOrder } from "@/lib/event-utils";
 
 export default async function MeetDetailPage({
@@ -141,54 +142,11 @@ export default async function MeetDetailPage({
       <MeetNavigation meetId={id} status={meet.status} />
 
       {/* Team Standings - Prominently displayed */}
-      <Card className="border-2">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-2xl">Team Standings</CardTitle>
-              <CardDescription>
-                Current standings for all participating teams
-              </CardDescription>
-            </div>
-            <SimulateMeetButton meetId={id} hasResults={hasResults} />
-          </div>
-        </CardHeader>
-        <CardContent>
-          {meet.meetTeams.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              <p>No teams added yet. Add teams to start scoring.</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-6 gap-4 font-semibold text-sm text-slate-600 border-b pb-2">
-                <div>Rank</div>
-                <div>Team</div>
-                <div className="text-right">Individual</div>
-                <div className="text-right">Relays</div>
-                <div className="text-right">Diving</div>
-                <div className="text-right">Total</div>
-              </div>
-              {meet.meetTeams.map((meetTeam, index) => (
-                <div
-                  key={meetTeam.id}
-                  className="grid grid-cols-6 gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
-                >
-                  <div className="font-bold text-xl">#{index + 1}</div>
-                  <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
-                    {meetTeam.team.name}
-                  </div>
-                  <div className="text-right font-medium">{meetTeam.individualScore.toFixed(1)}</div>
-                  <div className="text-right font-medium">{meetTeam.relayScore.toFixed(1)}</div>
-                  <div className="text-right font-medium">{meetTeam.divingScore.toFixed(1)}</div>
-                  <div className="text-right font-bold text-xl">
-                    {meetTeam.totalScore.toFixed(1)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <TeamStandings 
+        meetTeams={meet.meetTeams} 
+        meetLineups={meet.meetLineups}
+        simulateButton={<SimulateMeetButton meetId={id} hasResults={hasResults} />}
+      />
 
       {/* Score Progression Graph - Only show if meet has been simulated */}
       {hasResults && (
