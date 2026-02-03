@@ -3,9 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, MapPin, Users, Settings, ListChecks, UsersRound } from "lucide-react";
+import { Calendar, MapPin } from "lucide-react";
 import Link from "next/link";
-import { SimulateMeetViewer } from "@/components/meets/simulate-meet-viewer";
+import { SimulateMeetButton } from "@/components/meets/simulate-meet-button";
+import { ScoreProgressionGraph } from "@/components/meets/score-progression-graph";
+import { ClassYearBreakdown } from "@/components/meets/class-year-breakdown";
+import { MeetNavigation } from "@/components/meets/meet-navigation";
 import { sortEventsByOrder } from "@/lib/event-utils";
 
 export default async function MeetDetailPage({
@@ -61,13 +64,6 @@ export default async function MeetDetailPage({
         },
       },
       conference: true,
-      _count: {
-        select: {
-          meetTeams: true,
-          meetLineups: true,
-          relayEntries: true,
-        },
-      },
     },
   });
 
@@ -138,50 +134,24 @@ export default async function MeetDetailPage({
               Back to Meets
             </Link>
           </Button>
-          <Button variant="outline" asChild>
-            <Link href={`/meets/${id}/edit`}>
-              <Settings className="h-4 w-4 mr-2" />
-              Edit
-            </Link>
-          </Button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Teams</CardDescription>
-            <CardTitle className="text-2xl">{meet._count.meetTeams}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Events</CardDescription>
-            <CardTitle className="text-2xl">{events.length}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Individual Entries</CardDescription>
-            <CardTitle className="text-2xl">{meet._count.meetLineups}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>Relay Entries</CardDescription>
-            <CardTitle className="text-2xl">{meet._count.relayEntries}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      {/* Navigation */}
+      <MeetNavigation meetId={id} status={meet.status} />
 
       {/* Team Standings - Prominently displayed */}
       <Card className="border-2">
         <CardHeader>
-          <CardTitle className="text-2xl">Team Standings</CardTitle>
-          <CardDescription>
-            Current standings for all participating teams
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-2xl">Team Standings</CardTitle>
+              <CardDescription>
+                Current standings for all participating teams
+              </CardDescription>
+            </div>
+            <SimulateMeetButton meetId={id} hasResults={hasResults} />
+          </div>
         </CardHeader>
         <CardContent>
           {meet.meetTeams.length === 0 ? (
@@ -220,103 +190,37 @@ export default async function MeetDetailPage({
         </CardContent>
       </Card>
 
-      {/* Meet Results Section - Includes simulation and results display */}
-      <SimulateMeetViewer
-        meet={meet}
-        events={events}
-        individualScoring={individualScoring}
-        relayScoring={relayScoring}
-        eventOrder={eventOrder}
-      />
-
-      {/* Setup Actions - Only show for draft meets */}
-      {meet.status === "draft" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Setup</CardTitle>
-            <CardDescription>
-              Configure rosters, lineups, and relays before simulating
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" asChild>
-                <Link href={`/meets/${id}/roster`}>
-                  <Users className="h-4 w-4 mr-2" />
-                  Set Rosters
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/meets/${id}/lineups`}>
-                  <ListChecks className="h-4 w-4 mr-2" />
-                  Set Lineups
-                </Link>
-              </Button>
-              <Button variant="outline" asChild>
-                <Link href={`/meets/${id}/relays`}>
-                  <UsersRound className="h-4 w-4 mr-2" />
-                  Create Relays
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Score Progression Graph - Only show if meet has been simulated */}
+      {hasResults && (
+        <ScoreProgressionGraph
+          events={events}
+          meetLineups={meet.meetLineups}
+          relayEntries={meet.relayEntries}
+          teams={meet.meetTeams.map((mt) => mt.team)}
+          eventOrder={eventOrder}
+        />
       )}
 
-      {/* Meet Configuration */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Roster Configuration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-600">Max Athletes per Team:</span>
-              <span className="font-medium">{meet.maxAthletes}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Diver Ratio:</span>
-              <span className="font-medium">{meet.diverRatio}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Diving Included:</span>
-              <span className="font-medium">{meet.divingIncluded ? "Yes" : "No"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Max Individual Events:</span>
-              <span className="font-medium">{meet.maxIndivEvents}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Max Relay Events:</span>
-              <span className="font-medium">{meet.maxRelays}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Max Diving Events:</span>
-              <span className="font-medium">{meet.maxDivingEvents}</span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Class Year Breakdown */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">Class Year Breakdown</CardTitle>
+          <CardDescription>
+            Team scores broken down by class year (Freshman, Sophomore, Junior, Senior, Graduate)
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ClassYearBreakdown
+            meetLineups={meet.meetLineups}
+            relayEntries={meet.relayEntries}
+            teams={meet.meetTeams.map((mt) => mt.team)}
+            individualScoring={individualScoring}
+            relayScoring={relayScoring}
+            scoringPlaces={meet.scoringPlaces}
+          />
+        </CardContent>
+      </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Scoring Configuration</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-slate-600">Scoring Places:</span>
-              <span className="font-medium">{meet.scoringPlaces}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Points for 1st Place:</span>
-              <span className="font-medium">{meet.scoringStartPoints}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-600">Relay Multiplier:</span>
-              <span className="font-medium">{meet.relayMultiplier}x</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
     </div>
   );

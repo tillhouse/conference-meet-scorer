@@ -9,11 +9,11 @@ import { RelayNavigation } from "@/components/meets/relay-navigation";
 
 // Standard relay events with their leg distances
 const RELAY_EVENTS = [
-  { name: "200 Medley Relay", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["50", "50", "50", "50"] },
   { name: "200 Free Relay", label: "200 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["50", "50", "50", "50"] },
-  { name: "400 Medley Relay", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["100", "100", "100", "100"] },
   { name: "400 Free Relay", label: "400 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["100", "100", "100", "100"] },
   { name: "800 Free Relay", label: "800 Free Relay", legs: ["FR", "FR", "FR", "FR"], distances: ["200", "200", "200", "200"] },
+  { name: "200 Medley Relay", label: "200 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["50", "50", "50", "50"] },
+  { name: "400 Medley Relay", label: "400 Medley Relay", legs: ["BK", "BR", "FL", "FR"], distances: ["100", "100", "100", "100"] },
 ];
 
 export default async function MeetRelaysPage({
@@ -96,22 +96,23 @@ export default async function MeetRelaysPage({
         // Determine legs and distances based on event name
         let legs = ["FR", "FR", "FR", "FR"];
         let distances = ["100", "100", "100", "100"];
+        const lowerName = e.name.toLowerCase();
         
-        if (e.name === "200 MR") {
-          legs = ["BK", "BR", "FL", "FR"];
-          distances = ["50", "50", "50", "50"];
-        } else if (e.name === "400 MR") {
-          legs = ["BK", "BR", "FL", "FR"];
-          distances = ["100", "100", "100", "100"];
-        } else if (e.name === "200 FR") {
+        if (lowerName.includes("200 free relay")) {
           legs = ["FR", "FR", "FR", "FR"];
           distances = ["50", "50", "50", "50"];
-        } else if (e.name === "400 FR") {
+        } else if (lowerName.includes("400 free relay")) {
           legs = ["FR", "FR", "FR", "FR"];
           distances = ["100", "100", "100", "100"];
-        } else if (e.name === "800 FR") {
+        } else if (lowerName.includes("800 free relay")) {
           legs = ["FR", "FR", "FR", "FR"];
           distances = ["200", "200", "200", "200"];
+        } else if (lowerName.includes("200 medley relay")) {
+          legs = ["BK", "BR", "FL", "FR"];
+          distances = ["50", "50", "50", "50"];
+        } else if (lowerName.includes("400 medley relay")) {
+          legs = ["BK", "BR", "FL", "FR"];
+          distances = ["100", "100", "100", "100"];
         }
         
         return { ...e, legs, distances };

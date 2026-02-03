@@ -100,7 +100,7 @@ export function RelayCreator({
             // Skip if eventId looks like a database ID (long alphanumeric string) instead of event name
             const eventName = relay.eventId;
             if (eventName && eventName.length < 20 && /^[\d\sA-Z]+$/.test(eventName)) {
-              // Valid event name (e.g., "200 MR", "400 FR")
+              // Valid event name (e.g., "200 Medley Relay", "400 Free Relay")
               loaded[eventName] = {
                 eventId: eventName,
                 athletes: relay.members || [null, null, null, null],

@@ -117,7 +117,7 @@ export async function POST(
     }
 
     // Ensure relay events exist
-    // relay.eventId is the event name (e.g., "200 MR"), not the database ID
+    // relay.eventId is the event name (e.g., "200 Medley Relay"), not the database ID
     for (const relay of data.relays) {
       let event = await prisma.event.findFirst({
         where: { name: relay.eventId },
@@ -165,7 +165,7 @@ export async function POST(
         }
       }
 
-      // relay.eventId is the event name (e.g., "200 MR")
+      // relay.eventId is the event name (e.g., "200 Medley Relay")
       let event = await prisma.event.findFirst({
         where: { name: relay.eventId },
       });

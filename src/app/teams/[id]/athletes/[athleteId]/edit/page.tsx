@@ -29,44 +29,42 @@ import {
 
 // Standard swimming and diving events with realistic placeholders
 const SWIMMING_EVENTS = [
-  { name: "50 FR", label: "50 Free", placeholder: "e.g., 19.85" },
-  { name: "100 FR", label: "100 Free", placeholder: "e.g., 43.50" },
-  { name: "200 FR", label: "200 Free", placeholder: "e.g., 1:35.20" },
-  { name: "500 FR", label: "500 Free", placeholder: "e.g., 4:15.32" },
-  { name: "1000 FR", label: "1000 Free", placeholder: "e.g., 9:05.00" },
-  { name: "1650 FR", label: "1650 Free", placeholder: "e.g., 14:45.61" },
-  { name: "50 BK", label: "50 Back", placeholder: "e.g., 22.50" },
-  { name: "100 BK", label: "100 Back", placeholder: "e.g., 46.84" },
-  { name: "200 BK", label: "200 Back", placeholder: "e.g., 1:41.35" },
-  { name: "50 BR", label: "50 Breast", placeholder: "e.g., 25.20" },
-  { name: "100 BR", label: "100 Breast", placeholder: "e.g., 53.50" },
-  { name: "200 BR", label: "200 Breast", placeholder: "e.g., 1:57.65" },
-  { name: "50 FL", label: "50 Fly", placeholder: "e.g., 21.20" },
-  { name: "100 FL", label: "100 Fly", placeholder: "e.g., 46.12" },
-  { name: "200 FL", label: "200 Fly", placeholder: "e.g., 1:42.95" },
-  { name: "100 IM", label: "100 IM", placeholder: "e.g., 50.25" },
+  { name: "50 Free", label: "50 Free", placeholder: "e.g., 19.85" },
+  { name: "100 Free", label: "100 Free", placeholder: "e.g., 43.50" },
+  { name: "200 Free", label: "200 Free", placeholder: "e.g., 1:35.20" },
+  { name: "500 Free", label: "500 Free", placeholder: "e.g., 4:15.32" },
+  { name: "1000 Free", label: "1000 Free", placeholder: "e.g., 9:05.00" },
+  { name: "1650 Free", label: "1650 Free", placeholder: "e.g., 14:45.61" },
+  { name: "50 Back", label: "50 Back", placeholder: "e.g., 22.50" },
+  { name: "100 Back", label: "100 Back", placeholder: "e.g., 46.84" },
+  { name: "200 Back", label: "200 Back", placeholder: "e.g., 1:41.35" },
+  { name: "50 Breast", label: "50 Breast", placeholder: "e.g., 25.20" },
+  { name: "100 Breast", label: "100 Breast", placeholder: "e.g., 53.50" },
+  { name: "200 Breast", label: "200 Breast", placeholder: "e.g., 1:57.65" },
+  { name: "50 Fly", label: "50 Fly", placeholder: "e.g., 21.20" },
+  { name: "100 Fly", label: "100 Fly", placeholder: "e.g., 46.12" },
+  { name: "200 Fly", label: "200 Fly", placeholder: "e.g., 1:42.95" },
   { name: "200 IM", label: "200 IM", placeholder: "e.g., 1:45.44" },
   { name: "400 IM", label: "400 IM", placeholder: "e.g., 3:46.08" },
 ];
 
 const DIVING_EVENTS = [
-  { name: "1M (dual)", label: "1M (Dual)", placeholder: "e.g., 325.50" },
-  { name: "1M (champ)", label: "1M (Champ)", placeholder: "e.g., 325.50" },
-  { name: "3M (dual)", label: "3M (Dual)", placeholder: "e.g., 350.25" },
-  { name: "3M (champ)", label: "3M (Champ)", placeholder: "e.g., 350.25" },
-  { name: "Platform (champ)", label: "Platform (Champ)", placeholder: "e.g., 380.00" },
+  { name: "1M Diving (dual)", label: "1M Diving", placeholder: "e.g., 325.50" },
+  { name: "1M Diving (champ)", label: "1M Diving", placeholder: "e.g., 325.50" },
+  { name: "3M Diving (dual)", label: "3M Diving", placeholder: "e.g., 350.25" },
+  { name: "3M Diving (champ)", label: "3M Diving", placeholder: "e.g., 350.25" },
+  { name: "Platform Diving (champ)", label: "Platform Diving", placeholder: "e.g., 380.00" },
 ];
 
+// Relay splits - Note: Backstroke cannot have relay splits (flying starts) as it leads off medley relays
 const RELAY_SPLIT_EVENTS = [
-  { name: "50 FR", label: "50 Free Split", placeholder: "e.g., 19.25" },
-  { name: "100 FR", label: "100 Free Split", placeholder: "e.g., 42.50" },
-  { name: "200 FR", label: "200 Free Split", placeholder: "e.g., 1:33.20" },
-  { name: "50 BK", label: "50 Back Split", placeholder: "e.g., 21.50" },
-  { name: "100 BK", label: "100 Back Split", placeholder: "e.g., 45.80" },
-  { name: "50 BR", label: "50 Breast Split", placeholder: "e.g., 24.50" },
-  { name: "100 BR", label: "100 Breast Split", placeholder: "e.g., 52.30" },
-  { name: "50 FL", label: "50 Fly Split", placeholder: "e.g., 21.20" },
-  { name: "100 FL", label: "100 Fly Split", placeholder: "e.g., 45.60" },
+  { name: "50 Free (split)", label: "50 Free (split)", placeholder: "e.g., 19.25" },
+  { name: "100 Free (split)", label: "100 Free (split)", placeholder: "e.g., 42.50" },
+  { name: "200 Free (split)", label: "200 Free (split)", placeholder: "e.g., 1:33.20" },
+  { name: "50 Breast (split)", label: "50 Breast (split)", placeholder: "e.g., 24.50" },
+  { name: "100 Breast (split)", label: "100 Breast (split)", placeholder: "e.g., 52.30" },
+  { name: "50 Fly (split)", label: "50 Fly (split)", placeholder: "e.g., 21.20" },
+  { name: "100 Fly (split)", label: "100 Fly (split)", placeholder: "e.g., 45.60" },
 ];
 
 const formSchema = z.object({

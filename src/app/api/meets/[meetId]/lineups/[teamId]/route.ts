@@ -129,17 +129,20 @@ export async function POST(
       // Create any events that still don't exist
       const eventsToCreate = missingEventIds
         .filter((id) => !eventsByName.some((e) => e.name === id))
-        .map((name) => ({
-          name,
-          fullName: name,
+        .map((name) => {
           const lowerName = name.toLowerCase();
           const eventType = lowerName.includes("relay")
             ? "relay"
             : lowerName.includes("diving") || lowerName.includes("1m") || lowerName.includes("3m") || lowerName.includes("platform")
             ? "diving"
-            : "individual",
-          sortOrder: 0,
-        }));
+            : "individual";
+          return {
+            name,
+            fullName: name,
+            eventType,
+            sortOrder: 0,
+          };
+        });
 
       if (eventsToCreate.length > 0) {
         await prisma.event.createMany({

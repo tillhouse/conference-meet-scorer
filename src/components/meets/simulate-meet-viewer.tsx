@@ -8,9 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatName, formatSecondsToTime, parseTimeToSeconds, normalizeTimeFormat } from "@/lib/utils";
 import { sortEventsByOrder } from "@/lib/event-utils";
-import { Play, CheckCircle2, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import Link from "next/link";
 import {
   Select,
   SelectContent,
@@ -103,15 +102,11 @@ export function SimulateMeetViewer({
   relayScoring,
   eventOrder,
 }: SimulateMeetViewerProps) {
-  const router = useRouter();
-  const [isSimulating, setIsSimulating] = useState(false);
   // Check if meet has been simulated (has places/points assigned)
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
-  const [simulated, setSimulated] = useState(hasResults);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [eventFilter, setEventFilter] = useState<string>("all");
-  const [showResults, setShowResults] = useState(hasResults);
 
   // Group lineups by event
   const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
@@ -219,32 +214,6 @@ export function SimulateMeetViewer({
     return { color: primaryColor, fontWeight: 600 };
   };
 
-  const handleSimulate = async () => {
-    setIsSimulating(true);
-    try {
-      const response = await fetch(`/api/meets/${meet.id}/simulate`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(error || "Failed to simulate meet");
-      }
-
-      toast.success("Meet simulated successfully!");
-      setSimulated(true);
-      // Refresh the page to get updated data
-      router.refresh();
-    } catch (error: any) {
-      console.error("Error simulating meet:", error);
-      toast.error(error.message || "Failed to simulate meet");
-    } finally {
-      setIsSimulating(false);
-    }
-  };
 
   // Sort results for an event (fastest first for swimming, highest first for diving)
   const sortEventResults = (
@@ -272,55 +241,9 @@ export function SimulateMeetViewer({
 
   return (
     <div className="space-y-6">
-      {/* Action Card */}
-      <Card className={hasResults ? "" : "border-2"}>
-        <CardHeader>
-          <CardTitle>Run Meet Simulation</CardTitle>
-          <CardDescription>
-            {hasResults 
-              ? "Meet has been simulated. View results below or re-simulate with updated data."
-              : "Simulate the meet results based on seed times. This will assign places and calculate points automatically."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {simulated ? (
-                <>
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                  <span className="text-sm text-green-600 font-medium">
-                    Meet has been simulated
-                  </span>
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="h-5 w-5 text-amber-600" />
-                  <span className="text-sm text-amber-600">
-                    No simulation has been run yet
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={handleSimulate} disabled={isSimulating} size={hasResults ? "default" : "lg"}>
-                <Play className="h-4 w-4 mr-2" />
-                {isSimulating ? "Simulating..." : hasResults ? "Re-simulate" : "Simulate Meet"}
-              </Button>
-              {hasResults && (
-                <Button 
-                  onClick={() => setShowResults(!showResults)} 
-                  variant={showResults ? "default" : "outline"}
-                >
-                  {showResults ? "Hide Results" : "Show Results"}
-                </Button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
-      {/* Results Display - Only show if results exist and are to be displayed */}
-      {showResults && (
+      {/* Results Display - Show if results exist */}
+      {hasResults && (
       <Card>
         <CardHeader>
           <CardTitle>{hasResults ? "Meet Results" : "Event Preview"}</CardTitle>
@@ -406,7 +329,14 @@ export function SimulateMeetViewer({
                         id={`event-${event.id}`} 
                         className="border rounded-lg p-4 border-slate-200"
                       >
-                        <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-lg">{event.name}</h3>
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/meets/${meet.id}/events/${event.id}`}>
+                              View Details
+                            </Link>
+                          </Button>
+                        </div>
                         {sortedRelays.length === 0 ? (
                           <p className="text-slate-500 text-sm">No relays entered</p>
                         ) : (
@@ -466,7 +396,14 @@ export function SimulateMeetViewer({
                         id={`event-${event.id}`} 
                         className="border rounded-lg p-4 border-slate-200"
                       >
-                        <h3 className="font-semibold text-lg mb-3">{event.name}</h3>
+                        <div className="flex items-center justify-between mb-3">
+                          <h3 className="font-semibold text-lg">{event.name}</h3>
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/meets/${meet.id}/events/${event.id}`}>
+                              View Details
+                            </Link>
+                          </Button>
+                        </div>
                         {sortedLineups.length === 0 ? (
                           <p className="text-slate-500 text-sm">No entries</p>
                         ) : (

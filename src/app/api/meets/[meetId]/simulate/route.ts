@@ -9,7 +9,7 @@ export async function POST(
   try {
     const { meetId } = await params;
 
-    // Fetch the meet with all related data
+    // Fetch the meet with all related data (force fresh read from database)
     const meet = await prisma.meet.findUnique({
       where: { id: meetId },
       include: {
@@ -68,17 +68,24 @@ export async function POST(
 
       const eventType = lineups[0].event.eventType;
 
-      // Sort by seed time (fastest first for swimming, highest first for diving)
+      // Sort by time (use override if present, otherwise seed)
       const sorted = [...lineups].sort((a, b) => {
-        let aTime = a.seedTimeSeconds;
-        let bTime = b.seedTimeSeconds;
+        // Use override time if present, otherwise use seed time
+        let aTime = a.overrideTimeSeconds ?? a.seedTimeSeconds;
+        let bTime = b.overrideTimeSeconds ?? b.seedTimeSeconds;
 
-        // If seedTimeSeconds is null, try to parse from seedTime string
-        if (aTime === null && a.seedTime) {
-          aTime = parseTimeToSeconds(a.seedTime);
+        // If timeSeconds is null, try to parse from time string
+        if (aTime === null) {
+          const timeStr = a.overrideTime ?? a.seedTime;
+          if (timeStr) {
+            aTime = parseTimeToSeconds(timeStr);
+          }
         }
-        if (bTime === null && b.seedTime) {
-          bTime = parseTimeToSeconds(b.seedTime);
+        if (bTime === null) {
+          const timeStr = b.overrideTime ?? b.seedTime;
+          if (timeStr) {
+            bTime = parseTimeToSeconds(timeStr);
+          }
         }
 
         // Default to 0 if still null
@@ -94,25 +101,67 @@ export async function POST(
         }
       });
 
-      // Assign places and calculate points
+      // Assign places and calculate points (handling ties)
+      let currentPlace = 1;
       for (let i = 0; i < sorted.length; i++) {
-        const lineup = sorted[i];
-        const place = i + 1;
-        const points = place <= meet.scoringPlaces ? (individualScoring[place.toString()] || 0) : 0;
+        // Find all entries with the same time (ties)
+        const currentTime = (() => {
+          const overrideTime = sorted[i].overrideTimeSeconds ?? sorted[i].seedTimeSeconds;
+          if (overrideTime !== null) return overrideTime;
+          const timeStr = sorted[i].overrideTime ?? sorted[i].seedTime;
+          return timeStr ? parseTimeToSeconds(timeStr) : 0;
+        })();
 
-        // Use seed time as final time for simulation
-        const finalTime = lineup.seedTime;
-        const finalTimeSeconds = lineup.seedTimeSeconds;
+        const tiedEntries: typeof sorted = [sorted[i]];
+        let j = i + 1;
+        while (j < sorted.length) {
+          const nextTime = (() => {
+            const overrideTime = sorted[j].overrideTimeSeconds ?? sorted[j].seedTimeSeconds;
+            if (overrideTime !== null) return overrideTime;
+            const timeStr = sorted[j].overrideTime ?? sorted[j].seedTime;
+            return timeStr ? parseTimeToSeconds(timeStr) : 0;
+          })();
 
-        await prisma.meetLineup.update({
-          where: { id: lineup.id },
-          data: {
-            place,
-            points,
-            finalTime,
-            finalTimeSeconds,
-          },
-        });
+          // Check if times are equal (accounting for floating point precision)
+          const isEqual = eventType === "diving"
+            ? Math.abs(currentTime - nextTime) < 0.01
+            : Math.abs(currentTime - nextTime) < 0.01;
+
+          if (isEqual) {
+            tiedEntries.push(sorted[j]);
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        // Calculate average points for tied entries
+        const tieCount = tiedEntries.length;
+        const placesOccupied = Array.from({ length: tieCount }, (_, idx) => currentPlace + idx);
+        const totalPoints = placesOccupied.reduce((sum, place) => {
+          return sum + (place <= meet.scoringPlaces ? (individualScoring[place.toString()] || 0) : 0);
+        }, 0);
+        const averagePoints = tieCount > 0 ? totalPoints / tieCount : 0;
+
+        // Assign same place and average points to all tied entries
+        for (const lineup of tiedEntries) {
+          const finalTime = lineup.overrideTime ?? lineup.seedTime;
+          const finalTimeSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds;
+
+          await prisma.meetLineup.update({
+            where: { id: lineup.id },
+            data: {
+              place: currentPlace, // All tied entries get the same place
+              points: averagePoints,
+              finalTime,
+              finalTimeSeconds,
+            },
+          });
+        }
+
+        // Move to next place after all tied entries
+        currentPlace += tieCount;
+        i = j - 1; // Adjust loop index (will be incremented by for loop)
       }
     }
 
@@ -120,17 +169,24 @@ export async function POST(
     for (const [eventId, relays] of Object.entries(relaysByEvent)) {
       if (relays.length === 0) continue;
 
-      // Sort by seed time (fastest first)
+      // Sort by time (use override if present, otherwise seed)
       const sorted = [...relays].sort((a, b) => {
-        let aTime = a.seedTimeSeconds;
-        let bTime = b.seedTimeSeconds;
+        // Use override time if present, otherwise use seed time
+        let aTime = a.overrideTimeSeconds ?? a.seedTimeSeconds;
+        let bTime = b.overrideTimeSeconds ?? b.seedTimeSeconds;
 
-        // If seedTimeSeconds is null, try to parse from seedTime string
-        if (aTime === null && a.seedTime) {
-          aTime = parseTimeToSeconds(a.seedTime);
+        // If timeSeconds is null, try to parse from time string
+        if (aTime === null) {
+          const timeStr = a.overrideTime ?? a.seedTime;
+          if (timeStr) {
+            aTime = parseTimeToSeconds(timeStr);
+          }
         }
-        if (bTime === null && b.seedTime) {
-          bTime = parseTimeToSeconds(b.seedTime);
+        if (bTime === null) {
+          const timeStr = b.overrideTime ?? b.seedTime;
+          if (timeStr) {
+            bTime = parseTimeToSeconds(timeStr);
+          }
         }
 
         // Default to 0 if still null
@@ -140,25 +196,63 @@ export async function POST(
         return aTime - bTime;
       });
 
-      // Assign places and calculate points
+      // Assign places and calculate points (handling ties)
+      let currentPlace = 1;
       for (let i = 0; i < sorted.length; i++) {
-        const relay = sorted[i];
-        const place = i + 1;
-        const points = place <= meet.scoringPlaces ? (relayScoring[place.toString()] || 0) : 0;
+        // Find all entries with the same time (ties)
+        const currentTime = (() => {
+          const overrideTime = sorted[i].overrideTimeSeconds ?? sorted[i].seedTimeSeconds;
+          if (overrideTime !== null) return overrideTime;
+          const timeStr = sorted[i].overrideTime ?? sorted[i].seedTime;
+          return timeStr ? parseTimeToSeconds(timeStr) : 0;
+        })();
 
-        // Use seed time as final time for simulation
-        const finalTime = relay.seedTime;
-        const finalTimeSeconds = relay.seedTimeSeconds;
+        const tiedEntries: typeof sorted = [sorted[i]];
+        let j = i + 1;
+        while (j < sorted.length) {
+          const nextTime = (() => {
+            const overrideTime = sorted[j].overrideTimeSeconds ?? sorted[j].seedTimeSeconds;
+            if (overrideTime !== null) return overrideTime;
+            const timeStr = sorted[j].overrideTime ?? sorted[j].seedTime;
+            return timeStr ? parseTimeToSeconds(timeStr) : 0;
+          })();
 
-        await prisma.relayEntry.update({
-          where: { id: relay.id },
-          data: {
-            place,
-            points,
-            finalTime,
-            finalTimeSeconds,
-          },
-        });
+          // Check if times are equal (accounting for floating point precision)
+          if (Math.abs(currentTime - nextTime) < 0.01) {
+            tiedEntries.push(sorted[j]);
+            j++;
+          } else {
+            break;
+          }
+        }
+
+        // Calculate average points for tied entries
+        const tieCount = tiedEntries.length;
+        const placesOccupied = Array.from({ length: tieCount }, (_, idx) => currentPlace + idx);
+        const totalPoints = placesOccupied.reduce((sum, place) => {
+          return sum + (place <= meet.scoringPlaces ? (relayScoring[place.toString()] || 0) : 0);
+        }, 0);
+        const averagePoints = tieCount > 0 ? totalPoints / tieCount : 0;
+
+        // Assign same place and average points to all tied entries
+        for (const relay of tiedEntries) {
+          const finalTime = relay.overrideTime ?? relay.seedTime;
+          const finalTimeSeconds = relay.overrideTimeSeconds ?? relay.seedTimeSeconds;
+
+          await prisma.relayEntry.update({
+            where: { id: relay.id },
+            data: {
+              place: currentPlace, // All tied entries get the same place
+              points: averagePoints,
+              finalTime,
+              finalTimeSeconds,
+            },
+          });
+        }
+
+        // Move to next place after all tied entries
+        currentPlace += tieCount;
+        i = j - 1; // Adjust loop index (will be incremented by for loop)
       }
     }
 
@@ -229,6 +323,11 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: "Meet simulated successfully",
+      timestamp: new Date().toISOString(),
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
     });
   } catch (error: any) {
     console.error("Error simulating meet:", error);

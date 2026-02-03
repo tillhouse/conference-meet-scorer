@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,6 +16,8 @@ import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { generateScoringTable } from "@/lib/scoring";
+import { UnifiedEventManager } from "@/components/meets/unified-event-manager";
+import { getDefaultEventOrder } from "@/lib/default-event-order";
 
 const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
@@ -73,9 +75,8 @@ const STANDARD_SWIMMING_EVENTS = [
   "50 Fly",
   "100 Fly",
   "200 Fly",
-  "100 Individual Medley",
-  "200 Individual Medley",
-  "400 Individual Medley",
+  "200 IM",
+  "400 IM",
 ];
 
 // Standard diving events
@@ -87,11 +88,11 @@ const STANDARD_DIVING_EVENTS = [
 
 // Standard relay events
 const STANDARD_RELAY_EVENTS = [
-  "200 Medley Relay",
   "200 Free Relay",
-  "400 Medley Relay",
   "400 Free Relay",
   "800 Free Relay",
+  "200 Medley Relay",
+  "400 Medley Relay",
 ];
 
 export default function NewMeetPage() {
@@ -100,6 +101,7 @@ export default function NewMeetPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+  const [eventOrder, setEventOrder] = useState<string[]>([]);
 
   const {
     register,
@@ -148,6 +150,7 @@ export default function NewMeetPage() {
 
   const selectedTeamIds = watch("teamIds");
   const selectedEventIds = watch("eventIds");
+  const meetType = watch("meetType");
   const divingIncluded = watch("divingIncluded");
   const scoringPlaces = watch("scoringPlaces");
   const scoringStartPoints = watch("scoringStartPoints");
@@ -159,10 +162,9 @@ export default function NewMeetPage() {
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
-      eventType: "individual",
-      exists: !!existingEvent,
+      eventType: "individual" as const,
     };
-  });
+  }).filter((e): e is Event => e !== null);
 
   const divingEventOptions = STANDARD_DIVING_EVENTS.map((eventName) => {
     // Match by checking if the event name contains the key part (e.g., "1M", "3M", "Platform")
@@ -173,20 +175,85 @@ export default function NewMeetPage() {
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
-      eventType: "diving",
-      exists: !!existingEvent,
+      eventType: "diving" as const,
     };
-  });
+  }).filter((e): e is Event => e !== null);
 
   const relayEventOptions = STANDARD_RELAY_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "relay");
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
-      eventType: "relay",
-      exists: !!existingEvent,
+      eventType: "relay" as const,
     };
-  });
+  }).filter((e): e is Event => e !== null);
+
+  // Combine all standard events
+  const allStandardEvents = useMemo(() => {
+    return [...swimmingEventOptions, ...relayEventOptions, ...divingEventOptions];
+  }, [swimmingEventOptions, relayEventOptions, divingEventOptions]);
+
+  // Initialize default championship event order when meet type is championship and events are loaded
+  useEffect(() => {
+    if (meetType === "championship" && !loadingData && allStandardEvents.length > 0) {
+      const defaultOrder = getDefaultEventOrder("championship");
+      
+      // Map event names to event IDs
+      const eventNameToId = new Map(allStandardEvents.map((e) => [e.name, e.id]));
+      const defaultEventIds = defaultOrder
+        .map((name) => eventNameToId.get(name))
+        .filter((id): id is string => id !== undefined);
+      
+      // Only set if no events are currently selected (to avoid overwriting user selections)
+      if (defaultEventIds.length > 0 && selectedEventIds.length === 0) {
+        setValue("eventIds", defaultEventIds);
+        setEventOrder(defaultEventIds);
+      }
+      // If events are selected but order is not set, set the order based on default
+      else if (defaultEventIds.length > 0 && eventOrder.length === 0 && selectedEventIds.length > 0) {
+        // Filter default order to only include selected events, maintaining default order
+        const orderedSelectedIds = defaultEventIds.filter((id) => selectedEventIds.includes(id));
+        // Add any selected events not in default order at the end
+        const remainingIds = selectedEventIds.filter((id) => !defaultEventIds.includes(id));
+        setEventOrder([...orderedSelectedIds, ...remainingIds]);
+      }
+    }
+  }, [meetType, loadingData, allStandardEvents, selectedEventIds.length, eventOrder.length, setValue]);
+
+  // Get configured events from selected IDs
+  const configuredEvents = useMemo(() => {
+    const eventMap = new Map(allStandardEvents.map((e) => [e.id, e]));
+    return selectedEventIds
+      .map((id) => {
+        // Check if it's a standard event
+        const standardEvent = eventMap.get(id);
+        if (standardEvent) return standardEvent;
+        
+        // Check if it's in the events array (from DB)
+        const dbEvent = events.find((e) => e.id === id);
+        if (dbEvent) {
+          return {
+            id: dbEvent.id,
+            name: dbEvent.name,
+            eventType: dbEvent.eventType as "individual" | "relay" | "diving",
+          };
+        }
+        
+        return null;
+      })
+      .filter((e): e is Event => e !== null);
+  }, [selectedEventIds, allStandardEvents, events]);
+
+  const handleEventsChange = useCallback((newEvents: Event[]) => {
+    const newEventIds = newEvents.map((e) => e.id);
+    setValue("eventIds", newEventIds);
+    // Update order to match new events order
+    setEventOrder(newEventIds);
+  }, [setValue]);
+
+  const handleOrderChange = useCallback((newOrder: string[]) => {
+    setEventOrder(newOrder);
+  }, []);
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
@@ -198,6 +265,31 @@ export default function NewMeetPage() {
         data.scoringStartPoints,
         data.relayMultiplier
       );
+
+      // Convert custom event IDs to names for saving
+      const eventIdsToSave = data.eventIds.map((id) => {
+        if (id.startsWith("custom-")) {
+          // Find the event by ID and use its name
+          const event = configuredEvents.find((e) => e.id === id);
+          return event ? event.name : id;
+        }
+        return id;
+      });
+
+      // Convert event order IDs to names for saving
+      // Create a map of event ID to event name
+      const eventIdToName = new Map(allStandardEvents.map((e) => [e.id, e.name]));
+      const eventOrderToSave = eventOrder.length > 0
+        ? eventOrder.map((id) => {
+            // If it's a custom event, get the name from configuredEvents
+            if (id.startsWith("custom-")) {
+              const event = configuredEvents.find((e) => e.id === id);
+              return event ? event.name : id;
+            }
+            // Otherwise, look it up in the standard events map
+            return eventIdToName.get(id) || id;
+          })
+        : null;
 
       const response = await fetch("/api/meets", {
         method: "POST",
@@ -221,7 +313,8 @@ export default function NewMeetPage() {
           individualScoring: JSON.stringify(scoring.individual),
           relayScoring: JSON.stringify(scoring.relay),
           teamIds: data.teamIds,
-          eventIds: data.eventIds,
+          eventIds: eventIdsToSave,
+          eventOrder: eventOrderToSave ? JSON.stringify(eventOrderToSave) : null,
         }),
       });
 
@@ -511,111 +604,18 @@ export default function NewMeetPage() {
           </CardContent>
         </Card>
 
-        {/* Events Selection */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Events</CardTitle>
-            <CardDescription>
-              Choose which events will be competed in this meet
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <h3 className="font-semibold mb-2">Swimming Events</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto border rounded-lg p-4">
-                {swimmingEventOptions.map((event) => (
-                  <div key={event.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`event-${event.id}`}
-                      checked={selectedEventIds.includes(event.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setValue("eventIds", [...selectedEventIds, event.id]);
-                        } else {
-                          setValue(
-                            "eventIds",
-                            selectedEventIds.filter((id) => id !== event.id)
-                          );
-                        }
-                      }}
-                    />
-                    <Label
-                      htmlFor={`event-${event.id}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {event.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="font-semibold mb-2">Relay Events</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-48 overflow-y-auto border rounded-lg p-4">
-                {relayEventOptions.map((event) => (
-                  <div key={event.id} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`event-${event.id}`}
-                      checked={selectedEventIds.includes(event.id)}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setValue("eventIds", [...selectedEventIds, event.id]);
-                        } else {
-                          setValue(
-                            "eventIds",
-                            selectedEventIds.filter((id) => id !== event.id)
-                          );
-                        }
-                      }}
-                    />
-                    <Label
-                      htmlFor={`event-${event.id}`}
-                      className="text-sm font-normal cursor-pointer"
-                    >
-                      {event.name}
-                    </Label>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {divingIncluded && (
-              <div>
-                <h3 className="font-semibold mb-2">Diving Events</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-48 overflow-y-auto border rounded-lg p-4">
-                  {divingEventOptions.map((event) => (
-                    <div key={event.id} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={`event-${event.id}`}
-                        checked={selectedEventIds.includes(event.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked) {
-                            setValue("eventIds", [...selectedEventIds, event.id]);
-                          } else {
-                            setValue(
-                              "eventIds",
-                              selectedEventIds.filter((id) => id !== event.id)
-                            );
-                          }
-                        }}
-                      />
-                      <Label
-                        htmlFor={`event-${event.id}`}
-                        className="text-sm font-normal cursor-pointer"
-                      >
-                        {event.name}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {errors.eventIds && (
-              <p className="text-sm text-red-600 mt-2">{errors.eventIds.message}</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* Events Selection & Ordering */}
+        <UnifiedEventManager
+          allStandardEvents={allStandardEvents}
+          configuredEvents={configuredEvents}
+          onEventsChange={handleEventsChange}
+          onOrderChange={handleOrderChange}
+          divingIncluded={divingIncluded}
+          onDivingIncludedChange={(included) => setValue("divingIncluded", included)}
+        />
+        {errors.eventIds && (
+          <p className="text-sm text-red-600">{errors.eventIds.message}</p>
+        )}
 
         {/* Actions */}
         <div className="flex gap-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,7 +16,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 import { generateScoringTable } from "@/lib/scoring";
-import { EventSelectorWithOrder } from "@/components/meets/event-selector-with-order";
+import { UnifiedEventManager } from "@/components/meets/unified-event-manager";
 
 const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
@@ -99,9 +99,8 @@ const STANDARD_SWIMMING_EVENTS = [
   "50 Fly",
   "100 Fly",
   "200 Fly",
-  "100 Individual Medley",
-  "200 Individual Medley",
-  "400 Individual Medley",
+  "200 IM",
+  "400 IM",
 ];
 
 // Standard diving events
@@ -113,11 +112,11 @@ const STANDARD_DIVING_EVENTS = [
 
 // Standard relay events
 const STANDARD_RELAY_EVENTS = [
-  "200 Medley Relay",
   "200 Free Relay",
-  "400 Medley Relay",
   "400 Free Relay",
   "800 Free Relay",
+  "200 Medley Relay",
+  "400 Medley Relay",
 ];
 
 export default function EditMeetPage() {
@@ -243,36 +242,6 @@ export default function EditMeetPage() {
   const scoringStartPoints = watch("scoringStartPoints");
   const relayMultiplier = watch("relayMultiplier");
 
-  // Memoize callbacks to prevent infinite loops
-  const handleSelectionChange = useCallback((newEventIds: string[]) => {
-    setValue("eventIds", newEventIds);
-    // Update order to maintain current order for still-selected events
-    setEventOrder((prevOrder) => {
-      const stillSelected = prevOrder.filter((id) => newEventIds.includes(id));
-      const newlyAdded = newEventIds.filter((id) => !prevOrder.includes(id));
-      return [...stillSelected, ...newlyAdded];
-    });
-  }, [setValue]);
-
-  const handleOrderChange = useCallback((newOrder: string[]) => {
-    setEventOrder(newOrder);
-  }, []);
-
-  const handleDivingIncludedChange = useCallback((included: boolean) => {
-    setValue("divingIncluded", included);
-    // If disabling diving, remove diving events from selection
-    if (!included) {
-      // Get diving event IDs from the events array directly
-      const divingEventIds = events
-        .filter((e) => e.eventType === "diving")
-        .map((e) => e.id);
-      setValue("eventIds", (currentIds: string[]) => 
-        currentIds.filter((id) => !divingEventIds.includes(id))
-      );
-      setEventOrder((prev) => prev.filter((id) => !divingEventIds.includes(id)));
-    }
-  }, [setValue, events]);
-
   // Create event options from standard lists, matching with existing events if they exist
   const swimmingEventOptions = STANDARD_SWIMMING_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "individual");
@@ -305,6 +274,62 @@ export default function EditMeetPage() {
     };
   }).filter((e): e is Event => e !== null);
 
+  // Combine all standard events
+  const allStandardEvents = useMemo(() => {
+    return [...swimmingEventOptions, ...relayEventOptions, ...divingEventOptions];
+  }, [swimmingEventOptions, relayEventOptions, divingEventOptions]);
+
+  // Get configured events from selected IDs
+  const configuredEvents = useMemo(() => {
+    const eventMap = new Map(allStandardEvents.map((e) => [e.id, e]));
+    return selectedEventIds
+      .map((id) => {
+        // Check if it's a standard event
+        const standardEvent = eventMap.get(id);
+        if (standardEvent) return standardEvent;
+        
+        // Check if it's in the events array (from DB)
+        const dbEvent = events.find((e) => e.id === id);
+        if (dbEvent) {
+          return {
+            id: dbEvent.id,
+            name: dbEvent.name,
+            eventType: dbEvent.eventType as "individual" | "relay" | "diving",
+          };
+        }
+        
+        return null;
+      })
+      .filter((e): e is Event => e !== null);
+  }, [selectedEventIds, allStandardEvents, events]);
+
+  // Memoize callbacks to prevent infinite loops
+  const handleEventsChange = useCallback((newEvents: Event[]) => {
+    const newEventIds = newEvents.map((e) => e.id);
+    setValue("eventIds", newEventIds);
+    // Update order to match new events order
+    setEventOrder(newEventIds);
+  }, [setValue]);
+
+  const handleOrderChange = useCallback((newOrder: string[]) => {
+    setEventOrder(newOrder);
+  }, []);
+
+  const handleDivingIncludedChange = useCallback((included: boolean) => {
+    setValue("divingIncluded", included);
+    // If disabling diving, remove diving events from selection
+    if (!included) {
+      // Get diving event IDs from the events array directly
+      const divingEventIds = events
+        .filter((e) => e.eventType === "diving")
+        .map((e) => e.id);
+      setValue("eventIds", (currentIds: string[]) => 
+        currentIds.filter((id) => !divingEventIds.includes(id))
+      );
+      setEventOrder((prev) => prev.filter((id) => !divingEventIds.includes(id)));
+    }
+  }, [setValue, events]);
+
   const onSubmit = async (data: FormData) => {
     setLoading(true);
 
@@ -315,6 +340,27 @@ export default function EditMeetPage() {
         data.scoringStartPoints,
         data.relayMultiplier
       );
+
+      // Convert custom event IDs to names for saving
+      const eventIdsToSave = data.eventIds.map((id) => {
+        if (id.startsWith("custom-")) {
+          // Find the event by ID and use its name
+          const event = configuredEvents.find((e) => e.id === id);
+          return event ? event.name : id;
+        }
+        return id;
+      });
+
+      // Convert event order IDs to names as well
+      const eventOrderToSave = eventOrder.length > 0
+        ? eventOrder.map((id) => {
+            if (id.startsWith("custom-")) {
+              const event = configuredEvents.find((e) => e.id === id);
+              return event ? event.name : id;
+            }
+            return id;
+          })
+        : null;
 
       const response = await fetch(`/api/meets/${meetId}`, {
         method: "PUT",
@@ -338,8 +384,8 @@ export default function EditMeetPage() {
           individualScoring: JSON.stringify(scoring.individual),
           relayScoring: JSON.stringify(scoring.relay),
           teamIds: data.teamIds,
-          eventIds: data.eventIds,
-          eventOrder: eventOrder.length > 0 ? JSON.stringify(eventOrder) : null,
+          eventIds: eventIdsToSave,
+          eventOrder: eventOrderToSave ? JSON.stringify(eventOrderToSave) : null,
         }),
       });
 
@@ -633,12 +679,10 @@ export default function EditMeetPage() {
         </Card>
 
         {/* Events Selection & Ordering */}
-        <EventSelectorWithOrder
-          swimmingEvents={swimmingEventOptions}
-          relayEvents={relayEventOptions}
-          divingEvents={divingEventOptions}
-          selectedEventIds={selectedEventIds}
-          onSelectionChange={handleSelectionChange}
+        <UnifiedEventManager
+          allStandardEvents={allStandardEvents}
+          configuredEvents={configuredEvents}
+          onEventsChange={handleEventsChange}
           onOrderChange={handleOrderChange}
           divingIncluded={divingIncluded}
           onDivingIncludedChange={handleDivingIncludedChange}

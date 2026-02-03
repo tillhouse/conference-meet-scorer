@@ -200,6 +200,10 @@ model MeetLineup {
   seedTime       String?
   seedTimeSeconds Float?
   
+  // Override time (for what-if scenarios)
+  overrideTime       String?
+  overrideTimeSeconds Float?
+  
   // Actual result (if meet is completed)
   finalTime       String?
   finalTimeSeconds Float?
@@ -226,6 +230,10 @@ model RelayEntry {
   // Relay time
   seedTime        String?
   seedTimeSeconds Float?
+  
+  // Override time (for what-if scenarios)
+  overrideTime        String?
+  overrideTimeSeconds Float?
   
   // Result
   finalTime       String?

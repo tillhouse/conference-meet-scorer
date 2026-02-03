@@ -20,6 +20,7 @@ const createMeetSchema = z.object({
   relayScoring: z.string(),
   teamIds: z.array(z.string()).min(1),
   eventIds: z.array(z.string()).min(1),
+  eventOrder: z.string().nullable().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -94,6 +95,28 @@ export async function POST(request: NextRequest) {
 
     const finalEventIds = allEvents.map((e) => e.id);
 
+    // Process eventOrder if provided (convert event names to IDs)
+    let finalEventOrder: string[] | null = null;
+    if (data.eventOrder) {
+      try {
+        const eventOrderArray = JSON.parse(data.eventOrder) as string[];
+        const eventNameToId = new Map(allEvents.map((e) => [e.name, e.id]));
+        finalEventOrder = eventOrderArray
+          .map((item) => {
+            // If it's already an ID (long string with dashes), use it
+            if (item.length > 10 || item.includes("-")) {
+              return item;
+            }
+            // Otherwise, it's a name - look it up
+            return eventNameToId.get(item) || item;
+          })
+          .filter((id) => finalEventIds.includes(id)); // Only include events that are actually selected
+      } catch (e) {
+        // If parsing fails, ignore eventOrder
+        console.warn("Failed to parse eventOrder:", e);
+      }
+    }
+
     // Create the meet
     const meet = await prisma.meet.create({
       data: {
@@ -114,6 +137,7 @@ export async function POST(request: NextRequest) {
         individualScoring: data.individualScoring,
         relayScoring: data.relayScoring,
         selectedEvents: JSON.stringify(finalEventIds),
+        eventOrder: finalEventOrder && finalEventOrder.length > 0 ? JSON.stringify(finalEventOrder) : null,
       },
     });
 
