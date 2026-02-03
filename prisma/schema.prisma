@@ -11,6 +11,65 @@ datasource db {
 }
 
 // ============================================
+// Authentication (NextAuth.js)
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?   // Hashed password for email/password auth
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  teamMemberships TeamMember[]
+  meetCollaborations MeetCollaborator[]
+  ownedTeams    Team[]    @relation("TeamOwner")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================
 // Conference & Teams
 // ============================================
 
@@ -27,21 +86,42 @@ model Conference {
 
 model Team {
   id           String  @id @default(cuid())
-  name         String  // "Princeton", "Yale"
-  shortName    String? // "PRIN", "YALE"
+  name         String  // "Men's Swimming", "Women's Swimming"
+  shortName    String? // "PRIN-M", "PRIN-W"
+  schoolName   String? // "Princeton University" (for School → Teams structure)
   primaryColor String? // Hex color code
   secondaryColor String?
   conferenceId String?
+  ownerId      String  // Team owner (User)
 
+  owner        User    @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   conference   Conference? @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
+  members      TeamMember[]
   athletes     Athlete[]
   meetTeams    MeetTeam[]
   relayEntries RelayEntry[]
+  meets        Meet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
+  @@index([ownerId])
+}
+
+model TeamMember {
+  id        String   @id @default(cuid())
+  teamId    String
+  userId    String
+  role      String   // "owner" | "admin" | "coach" | "assistant" | "viewer"
+  createdAt DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([teamId])
+  @@index([userId])
 }
 
 // ============================================
@@ -120,6 +200,7 @@ model Meet {
   date         DateTime?
   location     String?
   conferenceId String?
+  teamId       String   // Team that owns/created this meet
   status       String   @default("draft") // "draft", "in_progress", "completed"
   
   // Meet type
@@ -153,7 +234,9 @@ model Meet {
   // If null, uses default order from Event.sortOrder
   eventOrder String? // JSON: ["eventId1", "eventId2", ...]
 
-  conference   Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
+  team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  conference  Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
+  collaborators MeetCollaborator[]
   meetTeams    MeetTeam[]
   meetLineups  MeetLineup[]
   relayEntries RelayEntry[]
@@ -162,8 +245,24 @@ model Meet {
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
+  @@index([teamId])
   @@index([status])
   @@index([meetType])
+}
+
+model MeetCollaborator {
+  id        String   @id @default(cuid())
+  meetId    String
+  userId    String
+  role      String   // "editor" | "viewer"
+  createdAt DateTime @default(now())
+
+  meet Meet @relation(fields: [meetId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([meetId, userId])
+  @@index([meetId])
+  @@index([userId])
 }
 
 // Teams participating in a meet

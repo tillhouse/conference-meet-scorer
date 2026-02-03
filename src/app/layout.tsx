@@ -1,15 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Sidebar } from "@/components/layout/sidebar";
-import { Header } from "@/components/layout/header";
 import { Toaster } from "@/components/ui/sonner";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Conference Meet Scorer",
-  description: "Optimize your swim team lineups for conference championships",
+  title: "Meet Scorer - Optimize Your Championship Meet",
+  description: "Plan rosters, simulate meets, and maximize points with intelligent lineup optimization for college swimming championships",
 };
 
 export default function RootLayout({
@@ -20,15 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex flex-1 flex-col overflow-hidden">
-            <Header />
-            <main className="flex-1 overflow-y-auto bg-slate-50 p-6">
-              {children}
-            </main>
-          </div>
-        </div>
+        {children}
         <Toaster />
       </body>
     </html>
