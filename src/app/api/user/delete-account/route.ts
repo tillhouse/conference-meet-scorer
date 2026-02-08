@@ -7,8 +7,8 @@ import { z } from "zod";
 
 const deleteAccountSchema = z.object({
   password: z.string().min(1, "Password is required"),
-  confirmText: z.literal("DELETE", {
-    errorMap: () => ({ message: "Confirmation text must be 'DELETE'" }),
+  confirmText: z.string().refine((val) => val === "DELETE", {
+    message: "Confirmation text must be 'DELETE'",
   }),
 });
 
