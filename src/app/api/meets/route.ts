@@ -21,6 +21,7 @@ const createMeetSchema = z.object({
   teamIds: z.array(z.string()).min(1),
   eventIds: z.array(z.string()).min(1),
   eventOrder: z.string().nullable().optional(),
+  teamAccountId: z.string().nullable().optional(), // Team Account that owns this meet
 });
 
 export async function POST(request: NextRequest) {
@@ -117,6 +118,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Determine teamId (for backward compatibility) and teamAccountId
+    const primaryTeamId = data.teamIds[0]; // Use first team as primary
+    const teamAccountId = data.teamAccountId || primaryTeamId; // Use provided teamAccountId or default to first team
+
     // Create the meet
     const meet = await prisma.meet.create({
       data: {
@@ -124,6 +129,8 @@ export async function POST(request: NextRequest) {
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
         location: data.location && data.location.trim() !== "" ? data.location : null,
         meetType: data.meetType,
+        teamId: primaryTeamId, // Legacy field for backward compatibility
+        teamAccountId: teamAccountId, // Link to Team Account
         maxAthletes: data.maxAthletes,
         diverRatio: data.diverRatio,
         divingIncluded: data.divingIncluded,

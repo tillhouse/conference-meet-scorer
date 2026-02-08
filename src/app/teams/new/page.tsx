@@ -9,19 +9,55 @@ import { Label } from "@/components/ui/label";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function NewTeamPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [programType, setProgramType] = useState<"mens" | "womens" | "coed" | "">("");
+  const [sportName, setSportName] = useState("");
   const [formData, setFormData] = useState({
     name: "",
     shortName: "",
+    schoolName: "",
     primaryColor: "#3b82f6",
     secondaryColor: "",
   });
 
+  // Update team name when program type or sport name changes
+  const updateTeamName = (type: string, sport: string) => {
+    let fullName = "";
+    if (type && sport) {
+      if (type === "mens") {
+        fullName = `Men's ${sport}`;
+      } else if (type === "womens") {
+        fullName = `Women's ${sport}`;
+      } else if (type === "coed") {
+        fullName = `Co-ed ${sport}`;
+      } else {
+        fullName = sport;
+      }
+    } else if (sport) {
+      fullName = sport;
+    }
+    setFormData({ ...formData, name: fullName });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate required fields
+    if (!programType || !sportName || !formData.schoolName) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -76,14 +112,72 @@ export default function NewTeamPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Team Name *</Label>
+              <Label htmlFor="schoolName">School Name *</Label>
+              <Input
+                id="schoolName"
+                value={formData.schoolName}
+                onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
+                placeholder="Princeton University"
+                required
+              />
+              <p className="text-xs text-slate-500">
+                The school or institution name. Teams from the same school will be grouped together.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="programType">Program Type *</Label>
+                <Select
+                  value={programType}
+                  onValueChange={(value: "mens" | "womens" | "coed" | "") => {
+                    setProgramType(value);
+                    updateTeamName(value, sportName);
+                  }}
+                  required
+                >
+                  <SelectTrigger id="programType">
+                    <SelectValue placeholder="Select program type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mens">Men's</SelectItem>
+                    <SelectItem value="womens">Women's</SelectItem>
+                    <SelectItem value="coed">Co-ed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="sportName">Sport/Program Name *</Label>
+                <Input
+                  id="sportName"
+                  value={sportName}
+                  onChange={(e) => {
+                    setSportName(e.target.value);
+                    updateTeamName(programType, e.target.value);
+                  }}
+                  placeholder="Swimming"
+                  required
+                />
+                <p className="text-xs text-slate-500">
+                  e.g., "Swimming", "Diving", "Water Polo"
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Team Name</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="Princeton"
-                required
+                placeholder="Men's Swimming"
+                disabled
+                className="bg-slate-50"
               />
+              <p className="text-xs text-slate-500">
+                Auto-generated from program type and sport name. You can edit if needed.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -92,9 +186,13 @@ export default function NewTeamPage() {
                 id="shortName"
                 value={formData.shortName}
                 onChange={(e) => setFormData({ ...formData, shortName: e.target.value })}
-                placeholder="PRIN"
+                placeholder="PRIN-M or PRIN-W"
               />
+              <p className="text-xs text-slate-500">
+                Optional: Abbreviation for meets (e.g., "PRIN-M" for Men's, "PRIN-W" for Women's)
+              </p>
             </div>
+
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

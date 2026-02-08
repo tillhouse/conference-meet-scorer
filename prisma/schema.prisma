@@ -92,7 +92,7 @@ model Team {
   primaryColor String? // Hex color code
   secondaryColor String?
   conferenceId String?
-  ownerId      String  // Team owner (User)
+  ownerId      String  // Team owner (User) - This team is the "Team Account"
 
   owner        User    @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   conference   Conference? @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
@@ -100,13 +100,32 @@ model Team {
   athletes     Athlete[]
   meetTeams    MeetTeam[]
   relayEntries RelayEntry[]
-  meets        Meet[]
+  meets        Meet[]  // Meets created from this team account
+  accountMeets Meet[]   @relation("TeamAccountMeets") // Meets linked to this team account
+  competitorOf TeamCompetitor[] @relation("CompetitorTeam") // Teams that have this as a competitor
+  hasCompetitors TeamCompetitor[] @relation("TeamAccount") // Competitor teams in this account's master database
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([conferenceId])
   @@index([ownerId])
+}
+
+// Competitor teams in a team account's master database
+model TeamCompetitor {
+  id              String   @id @default(cuid())
+  teamAccountId   String   // The primary team (Team Account)
+  competitorTeamId String  // A competitor team in the database
+  addedBy         String   // User ID who added it
+  createdAt       DateTime @default(now())
+
+  teamAccount     Team @relation("TeamAccount", fields: [teamAccountId], references: [id], onDelete: Cascade)
+  competitorTeam  Team @relation("CompetitorTeam", fields: [competitorTeamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamAccountId, competitorTeamId])
+  @@index([teamAccountId])
+  @@index([competitorTeamId])
 }
 
 model TeamMember {
@@ -200,7 +219,8 @@ model Meet {
   date         DateTime?
   location     String?
   conferenceId String?
-  teamId       String   // Team that owns/created this meet
+  teamId       String   // Team that owns/created this meet (legacy - for backward compatibility)
+  teamAccountId String? // Team Account (primary team) that owns this meet
   status       String   @default("draft") // "draft", "in_progress", "completed"
   
   // Meet type
@@ -235,6 +255,7 @@ model Meet {
   eventOrder String? // JSON: ["eventId1", "eventId2", ...]
 
   team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  teamAccount Team?   @relation("TeamAccountMeets", fields: [teamAccountId], references: [id], onDelete: SetNull)
   conference  Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
   collaborators MeetCollaborator[]
   meetTeams    MeetTeam[]
@@ -246,6 +267,7 @@ model Meet {
 
   @@index([conferenceId])
   @@index([teamId])
+  @@index([teamAccountId])
   @@index([status])
   @@index([meetType])
 }

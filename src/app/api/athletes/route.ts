@@ -10,6 +10,45 @@ const createAthleteSchema = z.object({
   teamId: z.string().min(1, "Team ID is required"),
 });
 
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const teamId = searchParams.get("teamId");
+
+    if (!teamId) {
+      return NextResponse.json(
+        { error: "Team ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const athletes = await prisma.athlete.findMany({
+      where: {
+        teamId,
+      },
+      include: {
+        eventTimes: {
+          include: {
+            event: true,
+          },
+        },
+      },
+      orderBy: [
+        { lastName: "asc" },
+        { firstName: "asc" },
+      ],
+    });
+
+    return NextResponse.json(athletes);
+  } catch (error) {
+    console.error("Error fetching athletes:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch athletes" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();

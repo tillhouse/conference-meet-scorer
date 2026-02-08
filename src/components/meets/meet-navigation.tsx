@@ -10,7 +10,8 @@ import {
   UsersRound, 
   LayoutDashboard,
   BarChart3,
-  UserCheck
+  UserCheck,
+  Upload
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -28,6 +29,12 @@ export function MeetNavigation({ meetId, status }: MeetNavigationProps) {
       label: "Edit Meet",
       icon: Settings,
       alwaysVisible: true,
+    },
+    {
+      href: `/meets/${meetId}/upload`,
+      label: "Upload Data",
+      icon: Upload,
+      alwaysVisible: false,
     },
     {
       href: `/meets/${meetId}/roster`,

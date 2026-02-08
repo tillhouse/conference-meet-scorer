@@ -2,7 +2,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 
-export default function DashboardLayout({
+export default function TeamsLayout({
   children,
 }: {
   children: React.ReactNode;

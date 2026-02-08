@@ -19,11 +19,10 @@ import { useState } from "react";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "My Teams", href: "/teams", icon: Users },
   { name: "Meets", href: "/meets", icon: Trophy },
-  { name: "Teams", href: "/teams", icon: Users },
-  { name: "Upload Data", href: "/upload", icon: Upload },
   { name: "AI Strategy", href: "/chat", icon: MessageSquare },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
 export function Sidebar() {

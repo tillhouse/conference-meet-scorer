@@ -28,17 +28,32 @@ export default function SignUpPage() {
         body: JSON.stringify({ name, email, password }),
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || "Failed to create account");
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If JSON parsing fails, show a generic error
+        setError("Server error. Please try again.");
+        console.error("Failed to parse response:", jsonError);
         return;
       }
 
-      // Redirect to sign in
+      if (!response.ok) {
+        // Handle validation errors
+        if (data.details && Array.isArray(data.details)) {
+          const errorMessages = data.details.map((err: any) => err.message).join(", ");
+          setError(errorMessages || data.error || "Failed to create account");
+        } else {
+          setError(data.error || "Failed to create account");
+        }
+        return;
+      }
+
+      // Success - redirect to sign in
       router.push("/auth/signin?registered=true");
-    } catch (error) {
-      setError("An error occurred. Please try again.");
+    } catch (error: any) {
+      console.error("Signup error:", error);
+      setError(error.message || "An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }

@@ -5,6 +5,7 @@ export interface ParsedAthlete {
   lastName: string;
   year?: string;
   isDiver: boolean;
+  teamName?: string; // Optional team name from CSV
   events: {
     eventName: string;
     time: string;
@@ -45,10 +46,21 @@ export function parseCSV(content: string): ParsedAthlete[] {
   const lastNameIndex = headerRow.findIndex((h) => h.toLowerCase().includes("last name"));
   const classYearIndex = headerRow.findIndex((h) => h.toLowerCase().includes("class year") || h.toLowerCase().includes("year"));
   const swimmerDiverIndex = headerRow.findIndex((h) => h.toLowerCase().includes("swimmer") || h.toLowerCase().includes("diver"));
+  const teamIndex = headerRow.findIndex((h) => 
+    h.toLowerCase().includes("team") && 
+    !h.toLowerCase().includes("event") && 
+    !h.toLowerCase().includes("time")
+  );
   
-  // Find event columns (everything after the first 4 columns that's not empty)
+  // Find event columns (everything after the standard columns that's not empty and not the team column)
   const eventColumns: { index: number; name: string }[] = [];
-  for (let i = Math.max(firstNameIndex, lastNameIndex, classYearIndex, swimmerDiverIndex) + 1; i < headerRow.length; i++) {
+  const standardColumnIndices = [firstNameIndex, lastNameIndex, classYearIndex, swimmerDiverIndex, teamIndex].filter(idx => idx !== -1);
+  const maxStandardIndex = standardColumnIndices.length > 0 ? Math.max(...standardColumnIndices) : -1;
+  
+  for (let i = maxStandardIndex + 1; i < headerRow.length; i++) {
+    // Skip team column if it's not at the end
+    if (i === teamIndex) continue;
+    
     const header = headerRow[i].trim();
     if (header && header.length > 0) {
       eventColumns.push({ index: i, name: header });
@@ -77,6 +89,13 @@ export function parseCSV(content: string): ParsedAthlete[] {
 
     if (!firstName || !lastName || firstName.length === 0 || lastName.length === 0) {
       continue;
+    }
+
+    // Get team name if present
+    let teamName: string | undefined;
+    if (teamIndex !== -1 && parts[teamIndex]) {
+      teamName = parts[teamIndex].trim();
+      if (teamName.length === 0) teamName = undefined;
     }
 
     // Get class year and convert to FR/SO/JR/SR/GR format
@@ -142,6 +161,7 @@ export function parseCSV(content: string): ParsedAthlete[] {
         lastName,
         year,
         isDiver,
+        teamName,
         events,
       });
     }

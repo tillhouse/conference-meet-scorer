@@ -1,23 +1,39 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Upload, Users, Plus, Edit } from "lucide-react";
+import { Users, UserCog, Building2, Trophy, Target } from "lucide-react";
 import Link from "next/link";
-import { AthletesTable } from "@/components/teams/athletes-table";
-import { CSVUpload } from "@/components/teams/csv-upload";
+import { TeamMembers } from "@/components/teams/team-members";
+import { TeamMeets } from "@/components/teams/team-meets";
+import { CompetitorRosters } from "@/components/teams/competitor-rosters";
+import { RosterManagement } from "@/components/teams/roster-management";
 
 export default async function TeamDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    redirect("/auth/signin");
+  }
+
   const { id } = await params;
   
   const team = await prisma.team.findUnique({
     where: { id },
     include: {
+      owner: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
       athletes: {
         include: {
           eventTimes: {
@@ -43,6 +59,24 @@ export default async function TeamDetailPage({
     notFound();
   }
 
+  // Check user's role in this team
+  const userMember = await prisma.teamMember.findUnique({
+    where: {
+      teamId_userId: {
+        teamId: id,
+        userId: session.user.id,
+      },
+    },
+  });
+
+  const isOwner = team.ownerId === session.user.id;
+  const isAdmin = userMember?.role === "admin" || isOwner;
+  const canAccess = isOwner || !!userMember;
+
+  if (!canAccess) {
+    redirect("/teams");
+  }
+
   const swimmers = team.athletes.filter((a) => !a.isDiver);
   const divers = team.athletes.filter((a) => a.isDiver);
 
@@ -51,7 +85,16 @@ export default async function TeamDetailPage({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">{team.name}</h1>
+          <div className="flex items-center gap-2">
+            {team.schoolName && (
+              <>
+                <Building2 className="h-5 w-5 text-slate-400" />
+                <span className="text-slate-500">{team.schoolName}</span>
+                <span className="text-slate-300">→</span>
+              </>
+            )}
+            <h1 className="text-3xl font-bold text-slate-900">{team.name}</h1>
+          </div>
           <p className="text-slate-600 mt-1">
             {team._count.athletes} athletes • {swimmers.length} swimmers • {divers.length} divers
           </p>
@@ -70,40 +113,46 @@ export default async function TeamDetailPage({
         <TabsList>
           <TabsTrigger value="roster">
             <Users className="h-4 w-4 mr-2" />
-            Roster
+            My Team
           </TabsTrigger>
-          <TabsTrigger value="upload">
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Data
+          <TabsTrigger value="competitors">
+            <Target className="h-4 w-4 mr-2" />
+            My Competitors
+          </TabsTrigger>
+          <TabsTrigger value="meets">
+            <Trophy className="h-4 w-4 mr-2" />
+            Meets
+          </TabsTrigger>
+          <TabsTrigger value="members">
+            <UserCog className="h-4 w-4 mr-2" />
+            Members
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="roster" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Athletes</CardTitle>
-                  <CardDescription>
-                    Manage your team roster and athlete events
-                  </CardDescription>
-                </div>
-                <Button asChild>
-                  <Link href={`/teams/${id}/athletes/new`}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Athlete
-                  </Link>
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <AthletesTable athletes={team.athletes} teamId={id} />
-            </CardContent>
-          </Card>
+          <RosterManagement
+            athletes={team.athletes}
+            teamId={id}
+            teamName={team.name}
+            canEdit={isAdmin}
+          />
         </TabsContent>
 
-        <TabsContent value="upload" className="space-y-4">
-          <CSVUpload teamId={id} teamName={team.name} />
+        <TabsContent value="competitors" className="space-y-4">
+          <CompetitorRosters
+            teamAccountId={id}
+            primaryTeamName={team.name}
+            primaryTeamSchoolName={team.schoolName}
+            canEdit={isAdmin}
+          />
+        </TabsContent>
+
+        <TabsContent value="meets" className="space-y-4">
+          <TeamMeets teamAccountId={id} />
+        </TabsContent>
+
+        <TabsContent value="members" className="space-y-4">
+          <TeamMembers teamId={id} isOwner={isOwner} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
     </div>
