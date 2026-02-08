@@ -243,16 +243,16 @@ export default function EditMeetPage() {
   const relayMultiplier = watch("relayMultiplier");
 
   // Create event options from standard lists, matching with existing events if they exist
-  const swimmingEventOptions = STANDARD_SWIMMING_EVENTS.map((eventName) => {
+  const swimmingEventOptions: Event[] = STANDARD_SWIMMING_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "individual");
     return {
       id: existingEvent?.id || eventName,
       name: eventName,
-      eventType: "individual" as const,
+      eventType: "individual",
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
-  const divingEventOptions = STANDARD_DIVING_EVENTS.map((eventName) => {
+  const divingEventOptions: Event[] = STANDARD_DIVING_EVENTS.map((eventName) => {
     // Match by checking if the event name contains the key part (e.g., "1M", "3M", "Platform")
     const keyPart = eventName.replace(" Diving", "").toLowerCase();
     const existingEvent = events.find(
@@ -261,18 +261,18 @@ export default function EditMeetPage() {
     return {
       id: existingEvent?.id || eventName,
       name: eventName,
-      eventType: "diving" as const,
+      eventType: "diving",
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
-  const relayEventOptions = STANDARD_RELAY_EVENTS.map((eventName) => {
+  const relayEventOptions: Event[] = STANDARD_RELAY_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "relay");
     return {
       id: existingEvent?.id || eventName,
       name: eventName,
-      eventType: "relay" as const,
+      eventType: "relay",
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
   // Combine all standard events
   const allStandardEvents = useMemo(() => {
