@@ -1,5 +1,6 @@
 "use client";
 
+// Edit meet page - allows updating meet configuration
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useForm } from "react-hook-form";
