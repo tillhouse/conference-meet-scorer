@@ -25,19 +25,19 @@ const formSchema = z.object({
   meetType: z.enum(["championship", "dual"]),
   
   // Roster configuration
-  maxAthletes: z.number().min(1).default(18),
-  diverRatio: z.number().min(0).max(1).default(0.333),
-  divingIncluded: z.boolean().default(true),
+  maxAthletes: z.number().min(1),
+  diverRatio: z.number().min(0).max(1),
+  divingIncluded: z.boolean(),
   
   // Event limits
-  maxIndivEvents: z.number().min(1).default(3),
-  maxRelays: z.number().min(1).default(4),
-  maxDivingEvents: z.number().min(1).default(2),
+  maxIndivEvents: z.number().min(1),
+  maxRelays: z.number().min(1),
+  maxDivingEvents: z.number().min(1),
   
   // Scoring configuration
-  scoringPlaces: z.enum(["16", "24"]).default("24"),
-  scoringStartPoints: z.number().min(1).default(32),
-  relayMultiplier: z.number().min(1).default(2.0),
+  scoringPlaces: z.enum(["16", "24"]),
+  scoringStartPoints: z.number().min(1),
+  relayMultiplier: z.number().min(1),
   
   // Teams and events
   teamIds: z.array(z.string()).min(1, "At least one team is required"),
