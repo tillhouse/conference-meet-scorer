@@ -24,22 +24,22 @@ const formSchema = z.object({
   date: z.string().optional(),
   location: z.string().optional(),
   meetType: z.enum(["championship", "dual"]),
-  
+
   // Roster configuration
-  maxAthletes: z.number().min(1).default(18),
-  diverRatio: z.number().min(0).max(1).default(0.333),
-  divingIncluded: z.boolean().default(true),
-  
+  maxAthletes: z.number().min(1),
+  diverRatio: z.number().min(0).max(1),
+  divingIncluded: z.boolean(),
+
   // Event limits
-  maxIndivEvents: z.number().min(1).default(3),
-  maxRelays: z.number().min(1).default(4),
-  maxDivingEvents: z.number().min(1).default(2),
-  
+  maxIndivEvents: z.number().min(1),
+  maxRelays: z.number().min(1),
+  maxDivingEvents: z.number().min(1),
+
   // Scoring configuration
-  scoringPlaces: z.enum(["16", "24"]).default("24"),
-  scoringStartPoints: z.number().min(1).default(32),
-  relayMultiplier: z.number().min(1).default(2.0),
-  
+  scoringPlaces: z.enum(["16", "24"]),
+  scoringStartPoints: z.number().min(1),
+  relayMultiplier: z.number().min(1),
+
   // Teams and events
   teamIds: z.array(z.string()).min(1, "At least one team is required"),
   eventIds: z.array(z.string()).min(1, "At least one event is required"),
@@ -55,7 +55,7 @@ interface Team {
 interface Event {
   id: string;
   name: string;
-  eventType: string;
+  eventType: "individual" | "diving" | "relay";
 }
 
 // Standard swimming events that should always be available
@@ -187,16 +187,16 @@ export default function NewMeetPageInternal() {
   const relayMultiplier = watch("relayMultiplier");
 
   // Create event options from standard lists, matching with existing events if they exist
-  const swimmingEventOptions = STANDARD_SWIMMING_EVENTS.map((eventName) => {
+  const swimmingEventOptions: Event[] = STANDARD_SWIMMING_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "individual");
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
       eventType: "individual" as const,
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
-  const divingEventOptions = STANDARD_DIVING_EVENTS.map((eventName) => {
+  const divingEventOptions: Event[] = STANDARD_DIVING_EVENTS.map((eventName) => {
     // Match by checking if the event name contains the key part (e.g., "1M", "3M", "Platform")
     const keyPart = eventName.replace(" Diving", "").toLowerCase();
     const existingEvent = events.find(
@@ -207,16 +207,16 @@ export default function NewMeetPageInternal() {
       name: eventName,
       eventType: "diving" as const,
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
-  const relayEventOptions = STANDARD_RELAY_EVENTS.map((eventName) => {
+  const relayEventOptions: Event[] = STANDARD_RELAY_EVENTS.map((eventName) => {
     const existingEvent = events.find((e) => e.name === eventName && e.eventType === "relay");
     return {
       id: existingEvent?.id || eventName, // Use event name as ID if not in DB yet
       name: eventName,
       eventType: "relay" as const,
     };
-  }).filter((e): e is Event => e !== null);
+  });
 
   // Combine all standard events
   const allStandardEvents = useMemo(() => {
@@ -258,7 +258,7 @@ export default function NewMeetPageInternal() {
         // Check if it's a standard event
         const standardEvent = eventMap.get(id);
         if (standardEvent) return standardEvent;
-        
+
         // Check if it's in the events array (from DB)
         const dbEvent = events.find((e) => e.id === id);
         if (dbEvent) {
@@ -268,10 +268,10 @@ export default function NewMeetPageInternal() {
             eventType: dbEvent.eventType as "individual" | "relay" | "diving",
           };
         }
-        
+
         return null;
       })
-      .filter((e): e is Event => e !== null);
+      .filter((e) => e !== null) as Event[];
   }, [selectedEventIds, allStandardEvents, events]);
 
   const handleEventsChange = useCallback((newEvents: Event[]) => {

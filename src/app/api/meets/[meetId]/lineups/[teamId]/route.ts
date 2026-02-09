@@ -145,10 +145,14 @@ export async function POST(
         });
 
       if (eventsToCreate.length > 0) {
-        await prisma.event.createMany({
-          data: eventsToCreate,
-          skipDuplicates: true,
-        });
+        // Use for loop instead of createMany to avoid potential race conditions
+        for (const eventData of eventsToCreate) {
+          await prisma.event.upsert({
+            where: { name: eventData.name },
+            update: {},
+            create: eventData,
+          });
+        }
       }
 
       // Fetch all events again including newly created ones

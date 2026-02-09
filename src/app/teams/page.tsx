@@ -192,7 +192,9 @@ export default async function TeamsPage() {
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                   <CardTitle className="text-xl">{team.name}</CardTitle>
-                                  <Crown className="h-4 w-4 text-yellow-500" title="Your Team Account" />
+                                  <span title="Your Team Account">
+                                    <Crown className="h-4 w-4 text-yellow-500" />
+                                  </span>
                                 </div>
                                 {team.primaryColor && (
                                   <div

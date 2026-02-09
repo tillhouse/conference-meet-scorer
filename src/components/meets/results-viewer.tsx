@@ -28,6 +28,7 @@ interface Meet {
     athleteId: string;
     eventId: string;
     seedTime: string | null;
+    seedTimeSeconds: number | null;
     finalTime: string | null;
     finalTimeSeconds: number | null;
     place: number | null;
@@ -64,6 +65,7 @@ interface Meet {
     event: {
       id: string;
       name: string;
+      eventType: string;
     };
   }[];
 }

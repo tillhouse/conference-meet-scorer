@@ -55,7 +55,7 @@ interface Team {
 interface Event {
   id: string;
   name: string;
-  eventType: string;
+  eventType: "individual" | "diving" | "relay";
 }
 
 interface MeetTeam {
@@ -324,12 +324,11 @@ export default function EditMeetPage() {
       const divingEventIds = events
         .filter((e) => e.eventType === "diving")
         .map((e) => e.id);
-      setValue("eventIds", (currentIds: string[]) => 
-        currentIds.filter((id) => !divingEventIds.includes(id))
-      );
+      const currentIds = selectedEventIds;
+      setValue("eventIds", currentIds.filter((id) => !divingEventIds.includes(id)));
       setEventOrder((prev) => prev.filter((id) => !divingEventIds.includes(id)));
     }
-  }, [setValue, events]);
+  }, [setValue, events, selectedEventIds]);
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);

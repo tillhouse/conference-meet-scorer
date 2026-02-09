@@ -57,7 +57,7 @@ interface ScoreProgressionGraphProps {
   meetLineups: MeetLineup[];
   relayEntries: RelayEntry[];
   teams: Team[];
-  eventOrder?: string[] | null;
+  eventOrder?: string[] | null | undefined;
 }
 
 interface DataPoint {
@@ -78,7 +78,7 @@ export function ScoreProgressionGraph({
   // Calculate cumulative scores per team after each event
   const cumulativeData = useMemo(() => {
     // Sort events according to custom order
-    const sortedEvents = sortEventsByOrder(events, eventOrder);
+    const sortedEvents = sortEventsByOrder(events, eventOrder ?? null);
 
     // Initialize cumulative scores for each team
     const teamScores: Record<string, number> = {};
@@ -144,7 +144,7 @@ export function ScoreProgressionGraph({
   // Calculate points per event (non-cumulative)
   const perEventData = useMemo(() => {
     // Sort events according to custom order
-    const sortedEvents = sortEventsByOrder(events, eventOrder);
+    const sortedEvents = sortEventsByOrder(events, eventOrder ?? null);
 
     // Build data points for each event
     const dataPoints: DataPoint[] = [];
@@ -316,9 +316,9 @@ export function ScoreProgressionGraph({
                   border: "1px solid #e5e7eb",
                   borderRadius: "0.5rem",
                 }}
-                formatter={(value: number, name: string) => [
-                  `${value} points`,
-                  name,
+                formatter={(value) => [
+                  `${value ?? 0} points`,
+                  "",
                 ]}
                 labelFormatter={(label) => `Event: ${label}`}
               />

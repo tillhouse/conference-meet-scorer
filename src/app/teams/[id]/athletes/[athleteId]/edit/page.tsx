@@ -71,9 +71,9 @@ const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   year: z.string().optional(),
-  isDiver: z.boolean().default(false),
-  isEnabled: z.boolean().default(true),
-  events: z.record(z.string().optional()),
+  isDiver: z.boolean(),
+  isEnabled: z.boolean(),
+  events: z.record(z.string(), z.string().optional()),
 });
 
 type FormData = z.infer<typeof formSchema>;

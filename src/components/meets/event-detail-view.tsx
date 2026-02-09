@@ -763,10 +763,10 @@ export function EventDetailView({
                       tick={{ fontSize: 12 }}
                     />
                     <YAxis />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: "white", border: "1px solid #e5e7eb" }}
-                      formatter={(value: number, name: string, props: any) => {
-                        return [value, chartView === "points" ? "Points" : "Entries"];
+                      formatter={(value) => {
+                        return [value ?? 0, chartView === "points" ? "Points" : "Entries"];
                       }}
                       labelFormatter={(label) => label}
                     />

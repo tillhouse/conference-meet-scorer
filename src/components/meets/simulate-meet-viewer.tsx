@@ -32,6 +32,7 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      primaryColor: string | null;
     };
   }[];
   meetLineups: {
@@ -65,6 +66,7 @@ interface Meet {
     teamId: string;
     eventId: string;
     seedTime: string | null;
+    seedTimeSeconds: number | null;
     finalTime: string | null;
     finalTimeSeconds: number | null;
     place: number | null;
@@ -73,10 +75,12 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      primaryColor: string | null;
     };
     event: {
       id: string;
       name: string;
+      eventType: string;
     };
   }[];
 }
