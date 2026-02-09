@@ -118,10 +118,6 @@ export default async function TeamsPage() {
       return acc;
     }, {} as Record<string, typeof teamsWithCompetitors>);
 
-    // Determine if user has a Team Account
-    const hasTeamAccount = ownedTeams.length > 0;
-    const primaryTeamAccount = ownedTeams[0]; // First Team Account
-
     return (
       <div className="space-y-6">
         {/* Page Header */}
@@ -132,21 +128,12 @@ export default async function TeamsPage() {
               Manage your team accounts, master databases, and meets
             </p>
           </div>
-          {hasTeamAccount ? (
-            <Button asChild>
-              <Link href={`/teams/${primaryTeamAccount.id}?tab=competitors`}>
-                <Plus className="h-4 w-4 mr-2" />
-                Add Competitor Team
-              </Link>
-            </Button>
-          ) : (
-            <Button asChild>
-              <Link href="/teams/new">
-                <Plus className="h-4 w-4 mr-2" />
-                New Team Account
-              </Link>
-            </Button>
-          )}
+          <Button asChild>
+            <Link href="/teams/new">
+              <Plus className="h-4 w-4 mr-2" />
+              New Team Account
+            </Link>
+          </Button>
         </div>
 
 

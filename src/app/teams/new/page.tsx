@@ -71,7 +71,9 @@ export default function NewTeamPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to create team");
+        const errorMessage = error.error || "Failed to create team";
+        const errorDetails = error.details ? `: ${JSON.stringify(error.details)}` : "";
+        throw new Error(errorMessage + errorDetails);
       }
 
       const team = await response.json();
