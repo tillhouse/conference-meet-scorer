@@ -301,7 +301,7 @@ export default function EditMeetPage() {
         
         return null;
       })
-      .filter((e): e is Event => e !== null);
+      .filter((e) => e !== null) as Event[];
   }, [selectedEventIds, allStandardEvents, events]);
 
   // Memoize callbacks to prevent infinite loops
