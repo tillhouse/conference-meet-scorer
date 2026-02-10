@@ -53,6 +53,8 @@ export default async function MeetEventsPage({
     ? (JSON.parse(meet.eventOrder) as string[])
     : null;
 
+  // If eventOrder exists but doesn't include all events, we need to merge it
+  // Events in eventOrder should maintain their order, events not in eventOrder should be sorted and appended
   const events = sortEventsByOrder(eventsUnsorted, eventOrder);
 
   return (
