@@ -86,6 +86,77 @@ export function formatTeamName(name: string, schoolName?: string | null): string
   return schoolName ? `${schoolName} - ${name}` : name;
 }
 
+// Normalize event name to standard format
+// Handles variations like "500 FR" -> "500 Free", "200 BK" -> "200 Back", etc.
+export function normalizeEventName(eventName: string): string {
+  if (!eventName) return eventName;
+  
+  const trimmed = eventName.trim();
+  
+  // Handle relay events
+  if (trimmed.toLowerCase().includes("relay")) {
+    return trimmed; // Keep relay names as-is for now
+  }
+  
+  // Handle diving events
+  if (trimmed.toLowerCase().includes("diving") || 
+      trimmed.toLowerCase().includes("1m") || 
+      trimmed.toLowerCase().includes("3m") ||
+      trimmed.toLowerCase().includes("platform")) {
+    return trimmed; // Keep diving names as-is for now
+  }
+  
+  // Extract distance and stroke abbreviation
+  // Pattern: "500 FR" or "500 Free" or "200 IM" etc.
+  const match = trimmed.match(/^(\d+)\s+(.+)$/);
+  if (!match) return trimmed; // Return as-is if pattern doesn't match
+  
+  const distance = match[1];
+  const stroke = match[2].trim().toUpperCase();
+  
+  // Map stroke abbreviations to full names
+  const strokeMap: Record<string, string> = {
+    "FR": "Free",
+    "FREE": "Free",
+    "BK": "Back",
+    "BACK": "Back",
+    "BR": "Breast",
+    "BREAST": "Breast",
+    "FL": "Fly",
+    "FLY": "Fly",
+    "BUTTERFLY": "Fly",
+    "IM": "IM",
+    "INDIVIDUAL MEDLEY": "IM",
+  };
+  
+  const normalizedStroke = strokeMap[stroke] || stroke;
+  
+  return `${distance} ${normalizedStroke}`;
+}
+
+// Find event by name with normalization (handles variations)
+export function findEventByName(events: Array<{ id: string; name: string }>, eventName: string): { id: string; name: string } | undefined {
+  if (!eventName) return undefined;
+  
+  // First try exact match
+  let found = events.find((e) => e.name === eventName);
+  if (found) return found;
+  
+  // Try case-insensitive match
+  const lowerEventName = eventName.toLowerCase();
+  found = events.find((e) => e.name.toLowerCase() === lowerEventName);
+  if (found) return found;
+  
+  // Try normalized match
+  const normalized = normalizeEventName(eventName);
+  found = events.find((e) => {
+    const normalizedExisting = normalizeEventName(e.name);
+    return normalizedExisting === normalized || normalizedExisting.toLowerCase() === normalized.toLowerCase();
+  });
+  
+  return found;
+}
+
 // Scoring tables
 export const DEFAULT_INDIVIDUAL_SCORING: Record<number, number> = {
   1: 32, 2: 28, 3: 27, 4: 26, 5: 25, 6: 24, 7: 23, 8: 22,

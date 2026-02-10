@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseCSV } from "@/lib/csv-parser";
+import { normalizeEventName, findEventByName } from "@/lib/utils";
 
 export async function POST(request: NextRequest) {
   try {
@@ -86,23 +87,48 @@ export async function POST(request: NextRequest) {
         // Process events
         for (const eventData of parsedAthlete.events) {
           try {
-            // Find or create event
+            // Normalize event name to standard format
+            const normalizedEventName = normalizeEventName(eventData.eventName);
+            
+            // Find or create event - try normalized name first, then original
             let event = await prisma.event.findUnique({
-              where: { name: eventData.eventName },
+              where: { name: normalizedEventName },
             });
+            
+            // If not found with normalized name, try original name
+            if (!event) {
+              event = await prisma.event.findUnique({
+                where: { name: eventData.eventName },
+              });
+            }
+            
+            // If still not found, try to find by normalized match in all events
+            if (!event) {
+              const allEvents = await prisma.event.findMany({
+                where: { eventType: { in: ["individual", "diving"] } },
+              });
+              const foundEvent = findEventByName(allEvents, eventData.eventName);
+              if (foundEvent) {
+                event = await prisma.event.findUnique({
+                  where: { id: foundEvent.id },
+                });
+              }
+            }
 
             if (!event) {
               // Determine event type
               const isDivingEvent =
-                eventData.eventName.includes("1M") ||
-                eventData.eventName.includes("3M") ||
-                eventData.eventName.toLowerCase().includes("platform");
+                normalizedEventName.includes("1M") ||
+                normalizedEventName.includes("3M") ||
+                normalizedEventName.toLowerCase().includes("platform") ||
+                normalizedEventName.toLowerCase().includes("diving");
               const eventType = isDivingEvent ? "diving" : "individual";
 
+              // Create event with normalized name
               event = await prisma.event.create({
                 data: {
-                  name: eventData.eventName,
-                  fullName: eventData.eventName, // Can be enhanced later
+                  name: normalizedEventName,
+                  fullName: normalizedEventName, // Can be enhanced later
                   eventType,
                   sortOrder: 0, // Can be enhanced later
                 },

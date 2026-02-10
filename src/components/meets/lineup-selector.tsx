@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, AlertCircle } from "lucide-react";
-import { formatName, normalizeTimeFormat } from "@/lib/utils";
+import { formatName, normalizeTimeFormat, normalizeEventName, findEventByName } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -33,6 +33,7 @@ interface Athlete {
     event: {
       id: string;
       name: string;
+      eventType: string;
     };
   }[];
 }
@@ -268,15 +269,62 @@ export function LineupSelector({
           <TabsContent value="swimmers" className="space-y-4 mt-4">
             {swimmers.map((athlete) => {
               const selectedEvents = athleteLineups[athlete.id] || new Set();
-              const selectedCount = Array.from(selectedEvents).filter((eid) =>
-                swimmingEvents.some((e) => e.id === eid)
-              ).length;
+              // Count all selected individual events (not just ones in meet's selectedEvents)
+              const selectedCount = Array.from(selectedEvents).filter((eid) => {
+                // Check if it's an individual event (either in swimmingEvents or in athlete's eventTimes)
+                const inMeetEvents = swimmingEvents.some((e) => e.id === eid);
+                if (inMeetEvents) return true;
+                // Check if athlete has this event as an individual event
+                const athleteEvent = athlete.eventTimes.find((et) => et.event.id === eid);
+                return athleteEvent?.event.eventType === "individual";
+              }).length;
               const isValid = selectedCount <= maxIndivEvents;
 
               // Get athlete's available events (ones they have times for)
-              const availableEvents = swimmingEvents.filter((event) =>
-                athlete.eventTimes.some((et) => et.event.id === event.id)
-              );
+              // Start with all individual swimming events the athlete has times for
+              const athleteSwimmingEvents = athlete.eventTimes
+                .filter((et) => et.event.eventType === "individual")
+                .map((et) => et.event);
+              
+              // Create maps for quick lookup by ID and normalized name
+              const meetEventMapById = new Map(swimmingEvents.map((e) => [e.id, e]));
+              const meetEventMapByName = new Map(swimmingEvents.map((e) => [normalizeEventName(e.name), e]));
+              
+              // Get unique events (by ID) - prefer meet events if available (they have full data)
+              const availableEventsMap = new Map<string, Event>();
+              
+              athleteSwimmingEvents.forEach((athleteEvent) => {
+                // First try to match by ID
+                let meetEvent = meetEventMapById.get(athleteEvent.id);
+                
+                // If not found by ID, try to match by normalized name
+                if (!meetEvent) {
+                  const normalizedName = normalizeEventName(athleteEvent.name);
+                  meetEvent = meetEventMapByName.get(normalizedName);
+                  
+                  // Also try finding by name using the helper function
+                  if (!meetEvent) {
+                    const foundEvent = findEventByName(swimmingEvents, athleteEvent.name);
+                    if (foundEvent) {
+                      meetEvent = foundEvent;
+                    }
+                  }
+                }
+                
+                if (meetEvent) {
+                  // Use the meet event (has proper eventType and is in the meet)
+                  availableEventsMap.set(meetEvent.id, meetEvent);
+                } else {
+                  // Otherwise, use the athlete's event (it has eventType from the database)
+                  availableEventsMap.set(athleteEvent.id, {
+                    id: athleteEvent.id,
+                    name: athleteEvent.name,
+                    eventType: athleteEvent.eventType,
+                  });
+                }
+              });
+              
+              const availableEvents = Array.from(availableEventsMap.values());
 
               return (
                 <div key={athlete.id} className="border rounded-lg p-4 space-y-2">
