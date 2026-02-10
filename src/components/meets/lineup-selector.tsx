@@ -343,12 +343,36 @@ export function LineupSelector({
                   </div>
                   <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                     {availableEvents.map((event) => {
-                      const hasTime = athlete.eventTimes.some(
+                      // Find time by matching event ID first
+                      let athleteEventTime = athlete.eventTimes.find(
                         (et) => et.event.id === event.id
                       );
-                      const time = athlete.eventTimes.find(
-                        (et) => et.event.id === event.id
-                      )?.time;
+                      
+                      // If not found by ID, try matching by normalized name
+                      if (!athleteEventTime) {
+                        const normalizedEventName = normalizeEventName(event.name);
+                        athleteEventTime = athlete.eventTimes.find((et) => {
+                          const normalizedAthleteEventName = normalizeEventName(et.event.name);
+                          return normalizedAthleteEventName === normalizedEventName ||
+                                 normalizedAthleteEventName.toLowerCase() === normalizedEventName.toLowerCase();
+                        });
+                      }
+                      
+                      // Also try using findEventByName helper
+                      if (!athleteEventTime) {
+                        const foundAthleteEvent = findEventByName(
+                          athlete.eventTimes.map(et => et.event),
+                          event.name
+                        );
+                        if (foundAthleteEvent) {
+                          athleteEventTime = athlete.eventTimes.find(
+                            (et) => et.event.id === foundAthleteEvent.id
+                          );
+                        }
+                      }
+                      
+                      const hasTime = !!athleteEventTime;
+                      const time = athleteEventTime?.time;
 
                       return (
                         <div key={event.id} className="flex items-center space-x-1">
