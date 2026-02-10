@@ -16,6 +16,18 @@ export default async function MeetEventsPage({
 
   const meet = await prisma.meet.findUnique({
     where: { id },
+    include: {
+      meetLineups: {
+        select: {
+          eventId: true,
+        },
+      },
+      relayEntries: {
+        select: {
+          eventId: true,
+        },
+      },
+    },
   });
 
   if (!meet) {
@@ -26,9 +38,14 @@ export default async function MeetEventsPage({
     ? (JSON.parse(meet.selectedEvents) as string[])
     : [];
   
+  // Get all event IDs from selectedEvents, lineups, and relay entries
+  const lineupEventIds = new Set(meet.meetLineups.map((l) => l.eventId));
+  const relayEventIds = new Set(meet.relayEntries.map((r) => r.eventId));
+  const allEventIds = new Set([...selectedEvents, ...lineupEventIds, ...relayEventIds]);
+  
   const eventsUnsorted = await prisma.event.findMany({
     where: {
-      id: { in: selectedEvents },
+      id: { in: Array.from(allEventIds) },
     },
   });
 
