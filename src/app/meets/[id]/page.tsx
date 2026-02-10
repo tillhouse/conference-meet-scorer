@@ -28,6 +28,7 @@ export default async function MeetDetailPage({
             select: {
               id: true,
               name: true,
+              schoolName: true,
               primaryColor: true,
             },
           },
@@ -44,6 +45,7 @@ export default async function MeetDetailPage({
                 select: {
                   id: true,
                   name: true,
+                  schoolName: true,
                   primaryColor: true,
                 },
               },
@@ -58,6 +60,7 @@ export default async function MeetDetailPage({
             select: {
               id: true,
               name: true,
+              schoolName: true,
               primaryColor: true,
             },
           },

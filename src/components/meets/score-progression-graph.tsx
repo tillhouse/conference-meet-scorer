@@ -15,10 +15,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { BarChart3, TrendingUp } from "lucide-react";
 import { sortEventsByOrder } from "@/lib/event-utils";
+import { formatTeamName } from "@/lib/utils";
 
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   primaryColor: string | null;
 }
 
@@ -36,6 +38,7 @@ interface MeetLineup {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
       primaryColor: string | null;
     };
   };
@@ -132,7 +135,7 @@ export function ScoreProgressionGraph({
       };
 
       teams.forEach((team) => {
-        dataPoint[team.name] = teamScores[team.id];
+        dataPoint[formatTeamName(team.name, team.schoolName)] = teamScores[team.id];
       });
 
       dataPoints.push(dataPoint);
@@ -187,7 +190,7 @@ export function ScoreProgressionGraph({
       };
 
       teams.forEach((team) => {
-        dataPoint[team.name] = eventPoints[team.id];
+        dataPoint[formatTeamName(team.name, team.schoolName)] = eventPoints[team.id];
       });
 
       dataPoints.push(dataPoint);
@@ -214,10 +217,11 @@ export function ScoreProgressionGraph({
     ];
 
     teams.forEach((team, index) => {
+      const teamDisplayName = formatTeamName(team.name, team.schoolName);
       if (team.primaryColor) {
-        colors[team.name] = team.primaryColor;
+        colors[teamDisplayName] = team.primaryColor;
       } else {
-        colors[team.name] = defaultColors[index % defaultColors.length];
+        colors[teamDisplayName] = defaultColors[index % defaultColors.length];
       }
     });
 
@@ -332,17 +336,20 @@ export function ScoreProgressionGraph({
                 iconType="line"
                 verticalAlign="bottom"
               />
-              {teams.map((team) => (
-                <Line
-                  key={team.id}
-                  type="monotone"
-                  dataKey={team.name}
-                  stroke={teamColors[team.name]}
-                  strokeWidth={2}
-                  dot={{ r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-              ))}
+              {teams.map((team) => {
+                const teamDisplayName = formatTeamName(team.name, team.schoolName);
+                return (
+                  <Line
+                    key={team.id}
+                    type="monotone"
+                    dataKey={teamDisplayName}
+                    stroke={teamColors[teamDisplayName]}
+                    strokeWidth={2}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         </div>

@@ -4,10 +4,12 @@ import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BarChart3, List, ArrowUp, ArrowDown } from "lucide-react";
+import { formatTeamName } from "@/lib/utils";
 
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   primaryColor: string | null;
 }
 
@@ -292,7 +294,7 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
               >
                 <div className="font-bold text-base">{index + 1}</div>
                 <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
-                  {meetTeam.team.name}
+                  {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
                 </div>
                 <div className="text-right font-medium text-base">{meetTeam.individualScore.toFixed(1)}</div>
                 <div className="text-right font-medium text-base">{meetTeam.relayScore.toFixed(1)}</div>
@@ -337,7 +339,7 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
                 >
                   <div className="font-bold text-base">{index + 1}</div>
                   <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
-                    {meetTeam.team.name}
+                    {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
                   </div>
                   <div className="text-right font-medium text-base">{swimmerCount}</div>
                   <div className="text-right font-medium text-base">{diverCount}</div>

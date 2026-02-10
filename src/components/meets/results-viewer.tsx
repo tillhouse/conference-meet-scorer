@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatName, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
+import { formatName, formatTeamName, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
 
 interface Meet {
   id: string;
@@ -21,6 +21,7 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
     };
   }[];
   meetLineups: {
@@ -61,6 +62,7 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
     };
     event: {
       id: string;
@@ -268,7 +270,7 @@ export function ResultsViewer({
                   {teamStats.map((team, index) => (
                     <TableRow key={team.id}>
                       <TableCell className="font-bold">#{index + 1}</TableCell>
-                      <TableCell className="font-medium">{team.team.name}</TableCell>
+                      <TableCell className="font-medium">{formatTeamName(team.team.name, team.team.schoolName)}</TableCell>
                       <TableCell className="text-right">
                         {team.individualScore.toFixed(1)}
                       </TableCell>
@@ -301,7 +303,7 @@ export function ResultsViewer({
                 <TableBody>
                   {teamStats.map((team) => (
                     <TableRow key={team.id}>
-                      <TableCell className="font-medium">{team.team.name}</TableCell>
+                      <TableCell className="font-medium">{formatTeamName(team.team.name, team.team.schoolName)}</TableCell>
                       <TableCell className="text-right">
                         {team.individualEntries} swim • {team.divingEntries} dive • {team.relayEntries} relay
                       </TableCell>
@@ -382,7 +384,7 @@ export function ResultsViewer({
                                       <span className="text-slate-400">-</span>
                                     )}
                                   </TableCell>
-                                  <TableCell>{relay.team.name}</TableCell>
+                                  <TableCell>{formatTeamName(relay.team.name, relay.team.schoolName)}</TableCell>
                                   <TableCell className="text-right font-mono">
                                     {relay.finalTime 
                                       ? normalizeTimeFormat(relay.finalTime)
@@ -436,7 +438,7 @@ export function ResultsViewer({
                                               lineup.athlete.lastName
                                             )}
                                           </TableCell>
-                                          <TableCell>{lineup.athlete.team.name}</TableCell>
+                                          <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                           <TableCell className="text-right font-mono">
                                             {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                           </TableCell>
@@ -500,7 +502,7 @@ export function ResultsViewer({
                                               lineup.athlete.lastName
                                             )}
                                           </TableCell>
-                                          <TableCell>{lineup.athlete.team.name}</TableCell>
+                                          <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                           <TableCell className="text-right font-mono">
                                             {lineup.finalTime 
                                               ? normalizeTimeFormat(lineup.finalTime)
@@ -824,7 +826,7 @@ export function ResultsViewer({
                                       <span className="text-slate-400">-</span>
                                     )}
                                   </TableCell>
-                                  <TableCell>{relay.team.name}</TableCell>
+                                  <TableCell>{formatTeamName(relay.team.name, relay.team.schoolName)}</TableCell>
                                   <TableCell className="text-right font-mono">
                                     {relay.finalTime 
                                       ? normalizeTimeFormat(relay.finalTime)

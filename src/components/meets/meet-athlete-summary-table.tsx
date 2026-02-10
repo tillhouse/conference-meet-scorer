@@ -38,6 +38,7 @@ interface MeetLineup {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
       primaryColor: string | null;
     };
   };
@@ -143,7 +144,7 @@ export function MeetAthleteSummaryTable({
           lastName: lineup.athlete.lastName,
           year: lineup.athlete.year,
           teamId: lineup.athlete.team.id,
-          teamName: lineup.athlete.team.name,
+          teamName: formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName),
           teamColor: lineup.athlete.team.primaryColor,
           individualEvents: [],
           relayEvents: [],

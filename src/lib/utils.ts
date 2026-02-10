@@ -81,6 +81,11 @@ export function formatName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`;
 }
 
+// Format team name with school name if available
+export function formatTeamName(name: string, schoolName?: string | null): string {
+  return schoolName ? `${schoolName} - ${name}` : name;
+}
+
 // Scoring tables
 export const DEFAULT_INDIVIDUAL_SCORING: Record<number, number> = {
   1: 32, 2: 28, 3: 27, 4: 26, 5: 25, 6: 24, 7: 23, 8: 22,

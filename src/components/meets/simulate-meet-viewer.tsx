@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatName, formatSecondsToTime, parseTimeToSeconds, normalizeTimeFormat } from "@/lib/utils";
+import { formatName, formatTeamName, formatSecondsToTime, parseTimeToSeconds, normalizeTimeFormat } from "@/lib/utils";
 import { sortEventsByOrder } from "@/lib/event-utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
@@ -32,6 +32,7 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
       primaryColor: string | null;
     };
   }[];
@@ -75,6 +76,7 @@ interface Meet {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
       primaryColor: string | null;
     };
     event: {
@@ -373,7 +375,7 @@ export function SimulateMeetViewer({
                                     </TableCell>
                                     <TableCell>
                                       <span style={getTeamColorStyle(relay.team.primaryColor)}>
-                                        {relay.team.name}
+                                        {formatTeamName(relay.team.name, relay.team.schoolName)}
                                       </span>
                                     </TableCell>
                                     <TableCell className="text-right font-mono">
@@ -447,7 +449,7 @@ export function SimulateMeetViewer({
                                     </TableCell>
                                     <TableCell>
                                     <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
-                                      {lineup.athlete.team.name}
+                                      {formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}
                                     </span>
                                   </TableCell>
                                     <TableCell className="text-right font-mono">
@@ -524,7 +526,7 @@ export function SimulateMeetViewer({
                                   </TableCell>
                                   <TableCell>
                                     <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
-                                      {lineup.athlete.team.name}
+                                      {formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-right font-mono">
@@ -600,7 +602,7 @@ export function SimulateMeetViewer({
                                   </TableCell>
                                   <TableCell>
                                     <span style={getTeamColorStyle(lineup.athlete.team.primaryColor)}>
-                                      {lineup.athlete.team.name}
+                                      {formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-right font-mono">
@@ -669,7 +671,7 @@ export function SimulateMeetViewer({
                                   </TableCell>
                                   <TableCell>
                                     <span style={getTeamColorStyle(relay.team.primaryColor)}>
-                                      {relay.team.name}
+                                      {formatTeamName(relay.team.name, relay.team.schoolName)}
                                     </span>
                                   </TableCell>
                                   <TableCell className="text-right font-mono">

@@ -50,6 +50,7 @@ type FormData = z.infer<typeof formSchema>;
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
 }
 
 interface Event {
@@ -624,7 +625,7 @@ export default function NewMeetPageInternal() {
                     htmlFor={`team-${team.id}`}
                     className="text-sm font-normal cursor-pointer"
                   >
-                    {team.name}
+                    {team.schoolName ? `${team.schoolName} - ${team.name}` : team.name}
                   </Label>
                 </div>
               ))}

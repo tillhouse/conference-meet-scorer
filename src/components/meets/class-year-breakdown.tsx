@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { formatTeamName } from "@/lib/utils";
 
 interface MeetLineup {
   id: string;
@@ -68,6 +69,7 @@ interface RelayEntry {
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   primaryColor: string | null;
 }
 
@@ -159,7 +161,7 @@ export function ClassYearBreakdown({
     teams.forEach((team) => {
       statsMap.set(team.id, {
         teamId: team.id,
-        teamName: team.name,
+        teamName: formatTeamName(team.name, team.schoolName),
         teamColor: team.primaryColor,
         classYears: {},
         totalPoints: 0,

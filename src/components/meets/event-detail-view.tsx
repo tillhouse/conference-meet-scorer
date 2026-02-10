@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatName, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
+import { formatName, formatTeamName, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Edit2, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -44,6 +44,7 @@ interface MeetLineup {
     team: {
       id: string;
       name: string;
+      schoolName?: string | null;
       primaryColor: string | null;
     };
   };
@@ -80,6 +81,7 @@ interface RelayEntry {
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   primaryColor: string | null;
 }
 
@@ -168,7 +170,7 @@ export function EventDetailView({
     teams.forEach((team) => {
       statsMap.set(team.id, {
         teamId: team.id,
-        teamName: team.name,
+        teamName: formatTeamName(team.name, team.schoolName),
         teamColor: team.primaryColor,
         totalPoints: 0,
         athleteCount: 0,
@@ -247,7 +249,7 @@ export function EventDetailView({
     teams.forEach((team) => {
       statsMap.set(team.id, {
         teamId: team.id,
-        teamName: team.name,
+        teamName: formatTeamName(team.name, team.schoolName),
         teamColor: team.primaryColor,
         totalPoints: 0,
         athleteCount: 0,
