@@ -296,7 +296,7 @@ export function EventDetailView({
       stats.totalPoints += points;
       stats.entries.push({
         athleteId: relay.id,
-        athleteName: relay.team.name,
+        athleteName: formatTeamName(relay.team.name, relay.team.schoolName),
         place,
         points,
         time: getEffectiveTime(relay),

@@ -25,6 +25,7 @@ export default async function MeetAthletesPage({
                 select: {
                   id: true,
                   name: true,
+                  schoolName: true,
                   primaryColor: true,
                 },
               },

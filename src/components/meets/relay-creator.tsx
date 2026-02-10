@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
-import { formatName, parseTimeToSeconds, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
+import { formatName, formatTeamName, parseTimeToSeconds, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Athlete {
@@ -32,6 +32,7 @@ interface Athlete {
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   athletes: Athlete[];
 }
 
@@ -265,7 +266,7 @@ export function RelayCreator({
   }, [relayEntries, relayEvents]);
 
   const handleClear = async () => {
-    if (!confirm(`Are you sure you want to clear all relays for ${team.name}? This action cannot be undone.`)) {
+    if (!confirm(`Are you sure you want to clear all relays for ${formatTeamName(team.name, team.schoolName)}? This action cannot be undone.`)) {
       return;
     }
 
@@ -293,7 +294,7 @@ export function RelayCreator({
       setRelayEntries(entries);
       setSavedRelayEntries(JSON.parse(JSON.stringify(entries))); // Deep copy
 
-      toast.success(`${team.name} relays cleared successfully`);
+      toast.success(`${formatTeamName(team.name, team.schoolName)} relays cleared successfully`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to clear relays");
     } finally {
@@ -383,7 +384,7 @@ export function RelayCreator({
         throw new Error(errorMessage);
       }
 
-      toast.success(`${team.name} relays saved successfully`);
+      toast.success(`${formatTeamName(team.name, team.schoolName)} relays saved successfully`);
       // Update saved state
       setSavedRelayEntries(JSON.parse(JSON.stringify(relayEntries))); // Deep copy
     } catch (error) {
@@ -409,7 +410,7 @@ export function RelayCreator({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{team.name}</CardTitle>
+            <CardTitle>{formatTeamName(team.name, team.schoolName)}</CardTitle>
             <CardDescription>
               Create relay lineups (max {maxRelays} relays per swimmer)
             </CardDescription>

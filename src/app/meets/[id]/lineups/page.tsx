@@ -20,18 +20,34 @@ export default async function MeetLineupsPage({
       meetTeams: {
         include: {
           team: {
-            include: {
+            select: {
+              id: true,
+              name: true,
+              schoolName: true,
               athletes: {
                 where: {
                   isEnabled: true,
                 },
-                include: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  year: true,
+                  isDiver: true,
                   eventTimes: {
                     where: {
                       isRelaySplit: false,
                     },
-                    include: {
-                      event: true,
+                    select: {
+                      id: true,
+                      time: true,
+                      event: {
+                        select: {
+                          id: true,
+                          name: true,
+                          eventType: true,
+                        },
+                      },
                     },
                   },
                 },

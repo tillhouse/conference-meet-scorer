@@ -81,9 +81,10 @@ export function formatName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`;
 }
 
-// Format team name with school name if available
+// Format team name - default to school name if available, otherwise use team name
+// This prioritizes school name for display while keeping team name distinction in backend
 export function formatTeamName(name: string, schoolName?: string | null): string {
-  return schoolName ? `${schoolName} - ${name}` : name;
+  return schoolName || name;
 }
 
 // Normalize event name to standard format

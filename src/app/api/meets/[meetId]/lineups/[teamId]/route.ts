@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { normalizeEventName } from "@/lib/utils";
 
 const saveLineupSchema = z.object({
   lineups: z.record(z.string(), z.array(z.string()).min(1)), // { athleteId: [eventId1, eventId2, ...] } - at least one event per athlete
@@ -258,13 +259,39 @@ export async function POST(
         let seedTimeSeconds: number | null = null;
         
         try {
-          const athleteEvent = await prisma.athleteEvent.findFirst({
+          // First try to find by event ID
+          let athleteEvent = await prisma.athleteEvent.findFirst({
             where: {
               athleteId: athlete.id,
               eventId: event.id,
               isRelaySplit: false,
             },
+            include: {
+              event: true,
+            },
           });
+          
+          // If not found by ID, try to find by normalized event name
+          if (!athleteEvent) {
+            const normalizedEventName = normalizeEventName(event.name);
+            const allAthleteEvents = await prisma.athleteEvent.findMany({
+              where: {
+                athleteId: athlete.id,
+                isRelaySplit: false,
+              },
+              include: {
+                event: true,
+              },
+            });
+            
+            // Try to find a match by normalized name
+            athleteEvent = allAthleteEvents.find((ae) => {
+              const normalizedAthleteEventName = normalizeEventName(ae.event.name);
+              return normalizedAthleteEventName === normalizedEventName ||
+                     normalizedAthleteEventName.toLowerCase() === normalizedEventName.toLowerCase();
+            }) || null;
+          }
+          
           seedTime = athleteEvent?.time || null;
           seedTimeSeconds = athleteEvent?.timeSeconds || null;
         } catch (e) {

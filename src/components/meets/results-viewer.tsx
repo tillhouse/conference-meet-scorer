@@ -41,6 +41,7 @@ interface Meet {
       team: {
         id: string;
         name: string;
+        schoolName?: string | null;
       };
     };
     event: {
@@ -567,7 +568,7 @@ export function ResultsViewer({
                                             lineup.athlete.lastName
                                           )}
                                         </TableCell>
-                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                         <TableCell className="text-right font-mono">
                                           {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                         </TableCell>
@@ -631,7 +632,7 @@ export function ResultsViewer({
                                             lineup.athlete.lastName
                                           )}
                                         </TableCell>
-                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                         <TableCell className="text-right font-mono">
                                           {lineup.finalTime 
                                             ? normalizeTimeFormat(lineup.finalTime)
@@ -695,7 +696,7 @@ export function ResultsViewer({
                                             lineup.athlete.lastName
                                           )}
                                         </TableCell>
-                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                         <TableCell className="text-right font-mono">
                                           {lineup.seedTime ? normalizeTimeFormat(lineup.seedTime) : "N/A"}
                                         </TableCell>
@@ -759,7 +760,7 @@ export function ResultsViewer({
                                             lineup.athlete.lastName
                                           )}
                                         </TableCell>
-                                        <TableCell>{lineup.athlete.team.name}</TableCell>
+                                        <TableCell>{formatTeamName(lineup.athlete.team.name, lineup.athlete.team.schoolName)}</TableCell>
                                         <TableCell className="text-right font-mono">
                                           {lineup.finalTime 
                                             ? normalizeTimeFormat(lineup.finalTime)

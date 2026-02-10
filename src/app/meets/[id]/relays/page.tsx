@@ -29,15 +29,32 @@ export default async function MeetRelaysPage({
       meetTeams: {
         include: {
           team: {
-            include: {
+            select: {
+              id: true,
+              name: true,
+              schoolName: true,
               athletes: {
                 where: {
                   isEnabled: true,
                 },
-                include: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  year: true,
+                  isDiver: true,
                   eventTimes: {
-                    include: {
-                      event: true,
+                    select: {
+                      id: true,
+                      time: true,
+                      timeSeconds: true,
+                      isRelaySplit: true,
+                      event: {
+                        select: {
+                          id: true,
+                          name: true,
+                        },
+                      },
                     },
                   },
                 },

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle2, AlertCircle } from "lucide-react";
-import { formatName, normalizeTimeFormat, normalizeEventName, findEventByName } from "@/lib/utils";
+import { formatName, formatTeamName, normalizeTimeFormat, normalizeEventName, findEventByName } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -41,6 +41,7 @@ interface Athlete {
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
   athletes: Athlete[];
 }
 
@@ -210,9 +211,9 @@ export function LineupSelector({
       const result = await response.json();
       if (result.skipped && result.skipped > 0) {
         console.warn("Some lineups were skipped:", result.skippedDetails);
-        toast.warning(`${team.name} lineups saved, but ${result.skipped} entries were skipped. Check console for details.`);
+        toast.warning(`${formatTeamName(team.name, team.schoolName)} lineups saved, but ${result.skipped} entries were skipped. Check console for details.`);
       } else {
-        toast.success(`${team.name} lineups saved successfully (${result.count} entries)`);
+        toast.success(`${formatTeamName(team.name, team.schoolName)} lineups saved successfully (${result.count} entries)`);
       }
       // Update saved state
       setSavedLineups(JSON.parse(JSON.stringify(athleteLineups))); // Deep copy
@@ -243,7 +244,7 @@ export function LineupSelector({
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{team.name}</CardTitle>
+            <CardTitle>{formatTeamName(team.name, team.schoolName)}</CardTitle>
             <CardDescription>
               Select events for each athlete
             </CardDescription>

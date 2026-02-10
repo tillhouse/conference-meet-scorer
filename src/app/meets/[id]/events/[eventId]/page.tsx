@@ -34,6 +34,7 @@ export default async function EventDetailPage({
             select: {
               id: true,
               name: true,
+              schoolName: true,
               primaryColor: true,
             },
           },
@@ -53,6 +54,7 @@ export default async function EventDetailPage({
                 select: {
                   id: true,
                   name: true,
+                  schoolName: true,
                   primaryColor: true,
                 },
               },
@@ -70,6 +72,7 @@ export default async function EventDetailPage({
             select: {
               id: true,
               name: true,
+              schoolName: true,
               primaryColor: true,
             },
           },
