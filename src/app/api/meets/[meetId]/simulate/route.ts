@@ -123,9 +123,11 @@ export async function POST(
           })();
 
           // Check if times are equal (accounting for floating point precision)
+          // Use a very small tolerance (0.001s = 1ms) to handle floating point rounding
+          // but not so large that it incorrectly ties times that differ by 0.01s (hundredths)
           const isEqual = eventType === "diving"
-            ? Math.abs(currentTime - nextTime) < 0.01
-            : Math.abs(currentTime - nextTime) < 0.01;
+            ? Math.abs(currentTime - nextTime) < 0.001
+            : Math.abs(currentTime - nextTime) < 0.001;
 
           if (isEqual) {
             tiedEntries.push(sorted[j]);
@@ -218,7 +220,9 @@ export async function POST(
           })();
 
           // Check if times are equal (accounting for floating point precision)
-          if (Math.abs(currentTime - nextTime) < 0.01) {
+          // Use a very small tolerance (0.001s = 1ms) to handle floating point rounding
+          // but not so large that it incorrectly ties times that differ by 0.01s (hundredths)
+          if (Math.abs(currentTime - nextTime) < 0.001) {
             tiedEntries.push(sorted[j]);
             j++;
           } else {
