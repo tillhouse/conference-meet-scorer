@@ -3,7 +3,7 @@ import { Header } from "@/components/layout/header";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
 import { DockedChatPanel } from "@/components/ai/docked-chat-panel";
 
-export default function DashboardLayout({
+export default function ChatLayout({
   children,
 }: {
   children: React.ReactNode;

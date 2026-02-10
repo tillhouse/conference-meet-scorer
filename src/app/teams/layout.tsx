@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { AuthSessionProvider } from "@/components/providers/session-provider";
+import { DockedChatPanel } from "@/components/ai/docked-chat-panel";
 
 export default function TeamsLayout({
   children,
@@ -17,6 +18,7 @@ export default function TeamsLayout({
             {children}
           </main>
         </div>
+        <DockedChatPanel />
       </div>
     </AuthSessionProvider>
   );

@@ -8,7 +8,6 @@ import {
   Trophy,
   Users,
   Upload,
-  MessageSquare,
   Settings,
   Waves,
   ChevronLeft,
@@ -21,7 +20,6 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "My Teams", href: "/teams", icon: Users },
   { name: "Meets", href: "/meets", icon: Trophy },
-  { name: "AI Strategy", href: "/chat", icon: MessageSquare },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 

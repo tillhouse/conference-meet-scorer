@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Trophy, Users, Upload, MessageSquare, Plus, TrendingUp } from "lucide-react";
+import { Trophy, Users, Upload, Plus, TrendingUp } from "lucide-react";
 
 export default function Dashboard() {
   return (
@@ -51,19 +51,6 @@ export default function Dashboard() {
             <CardContent>
               <div className="text-2xl font-bold">Ready</div>
               <p className="text-xs text-muted-foreground">Upload CSV/TXT files</p>
-            </CardContent>
-          </Link>
-        </Card>
-
-        <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-          <Link href="/chat">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">AI Strategy</CardTitle>
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">Available</div>
-              <p className="text-xs text-muted-foreground">Get lineup insights</p>
             </CardContent>
           </Link>
         </Card>
@@ -122,13 +109,13 @@ export default function Dashboard() {
               <div className="flex-1">
                 <p className="font-medium">Build and optimize lineups</p>
                 <p className="text-sm text-muted-foreground">
-                  Select athletes and events, or use AI to optimize automatically
+                  Select athletes and events, or use the AI Strategy panel (bottom right) to optimize automatically
                 </p>
               </div>
               <Button asChild variant="outline">
-                <Link href="/chat">
+                <Link href="/meets">
                   <TrendingUp className="h-4 w-4 mr-2" />
-                  Optimize
+                  View Meets
                 </Link>
               </Button>
             </div>
