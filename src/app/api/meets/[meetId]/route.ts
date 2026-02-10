@@ -148,6 +148,28 @@ export async function PUT(
 
     const finalEventIds = allEvents.map((e) => e.id);
 
+    // Process eventOrder if provided (convert event names to IDs, similar to create route)
+    let finalEventOrder: string[] | null = null;
+    if (data.eventOrder) {
+      try {
+        const eventOrderArray = JSON.parse(data.eventOrder) as string[];
+        const eventNameToId = new Map(allEvents.map((e) => [e.name, e.id]));
+        finalEventOrder = eventOrderArray
+          .map((item) => {
+            // If it's already an ID (long string with dashes), use it
+            if (item.length > 10 || item.includes("-")) {
+              return item;
+            }
+            // Otherwise, it's a name - look it up
+            return eventNameToId.get(item) || item;
+          })
+          .filter((id) => finalEventIds.includes(id)); // Only include events that are actually selected
+      } catch (e) {
+        // If parsing fails, ignore eventOrder
+        console.warn("Failed to parse eventOrder:", e);
+      }
+    }
+
     // Update the meet
     const meet = await prisma.meet.update({
       where: { id: meetId },
@@ -169,7 +191,7 @@ export async function PUT(
         individualScoring: data.individualScoring,
         relayScoring: data.relayScoring,
         selectedEvents: JSON.stringify(finalEventIds),
-        ...(data.eventOrder !== undefined && { eventOrder: data.eventOrder }),
+        eventOrder: finalEventOrder ? JSON.stringify(finalEventOrder) : null,
       },
     });
 

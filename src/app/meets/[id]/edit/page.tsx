@@ -194,8 +194,28 @@ export default function EditMeetPage() {
           : null;
         
         // Set event order (use existing or default to selected events order)
+        // Ensure eventOrder includes all selected events, maintaining order where possible
         if (existingEventOrder && existingEventOrder.length > 0) {
-          setEventOrder(existingEventOrder);
+          // Filter to only include events that are still selected, and add any missing ones
+          const ordered: string[] = [];
+          const seen = new Set<string>();
+          
+          // Add events in existing order that are still selected
+          for (const id of existingEventOrder) {
+            if (selectedEventIds.includes(id)) {
+              ordered.push(id);
+              seen.add(id);
+            }
+          }
+          
+          // Add any selected events not in existing order
+          for (const id of selectedEventIds) {
+            if (!seen.has(id)) {
+              ordered.push(id);
+            }
+          }
+          
+          setEventOrder(ordered);
         } else {
           setEventOrder(selectedEventIds);
         }
@@ -281,36 +301,94 @@ export default function EditMeetPage() {
     return [...swimmingEventOptions, ...relayEventOptions, ...divingEventOptions];
   }, [swimmingEventOptions, relayEventOptions, divingEventOptions]);
 
-  // Get configured events from selected IDs
+  // Get configured events from selected IDs, respecting eventOrder if available
   const configuredEvents = useMemo(() => {
     const eventMap = new Map(allStandardEvents.map((e) => [e.id, e]));
-    return selectedEventIds
-      .map((id) => {
-        // Check if it's a standard event
-        const standardEvent = eventMap.get(id);
-        if (standardEvent) return standardEvent;
-        
-        // Check if it's in the events array (from DB)
-        const dbEvent = events.find((e) => e.id === id);
-        if (dbEvent) {
-          return {
-            id: dbEvent.id,
-            name: dbEvent.name,
-            eventType: dbEvent.eventType as "individual" | "relay" | "diving",
-          };
+    
+    // Helper to get event by ID
+    const getEventById = (id: string): Event | null => {
+      // Check if it's a standard event
+      const standardEvent = eventMap.get(id);
+      if (standardEvent) return standardEvent;
+      
+      // Check if it's in the events array (from DB)
+      const dbEvent = events.find((e) => e.id === id);
+      if (dbEvent) {
+        return {
+          id: dbEvent.id,
+          name: dbEvent.name,
+          eventType: dbEvent.eventType as "individual" | "relay" | "diving",
+        };
+      }
+      
+      return null;
+    };
+    
+    // If eventOrder exists and has events, use it to order configuredEvents
+    if (eventOrder && eventOrder.length > 0) {
+      const ordered: Event[] = [];
+      const seen = new Set<string>();
+      
+      // Add events in eventOrder that are also in selectedEventIds
+      for (const id of eventOrder) {
+        if (selectedEventIds.includes(id)) {
+          const event = getEventById(id);
+          if (event) {
+            ordered.push(event);
+            seen.add(id);
+          }
         }
-        
-        return null;
-      })
+      }
+      
+      // Add any selected events not in eventOrder at the end
+      for (const id of selectedEventIds) {
+        if (!seen.has(id)) {
+          const event = getEventById(id);
+          if (event) {
+            ordered.push(event);
+          }
+        }
+      }
+      
+      return ordered;
+    }
+    
+    // No eventOrder, just use selectedEventIds order
+    return selectedEventIds
+      .map((id) => getEventById(id))
       .filter((e) => e !== null) as Event[];
-  }, [selectedEventIds, allStandardEvents, events]);
+  }, [selectedEventIds, allStandardEvents, events, eventOrder]);
 
   // Memoize callbacks to prevent infinite loops
   const handleEventsChange = useCallback((newEvents: Event[]) => {
     const newEventIds = newEvents.map((e) => e.id);
     setValue("eventIds", newEventIds);
-    // Update order to match new events order
-    setEventOrder(newEventIds);
+    // Update order to match new events order, preserving existing order where possible
+    setEventOrder((prevOrder) => {
+      if (prevOrder.length === 0) {
+        return newEventIds;
+      }
+      // Keep existing order for events that are still selected
+      const ordered: string[] = [];
+      const seen = new Set<string>();
+      
+      // Add events in existing order that are still in new events
+      for (const id of prevOrder) {
+        if (newEventIds.includes(id)) {
+          ordered.push(id);
+          seen.add(id);
+        }
+      }
+      
+      // Add new events that weren't in the previous order
+      for (const id of newEventIds) {
+        if (!seen.has(id)) {
+          ordered.push(id);
+        }
+      }
+      
+      return ordered;
+    });
   }, [setValue]);
 
   const handleOrderChange = useCallback((newOrder: string[]) => {
@@ -352,9 +430,32 @@ export default function EditMeetPage() {
         return id;
       });
 
-      // Convert event order IDs to names as well
-      const eventOrderToSave = eventOrder.length > 0
-        ? eventOrder.map((id) => {
+      // Ensure eventOrder includes all selected events, maintaining the order
+      // Events in eventOrder come first, then any selected events not in eventOrder
+      const allSelectedEventIds = new Set(data.eventIds);
+      const orderedEventIds: string[] = [];
+      const seen = new Set<string>();
+      
+      // Add events in current eventOrder that are still selected
+      if (eventOrder.length > 0) {
+        for (const id of eventOrder) {
+          if (allSelectedEventIds.has(id)) {
+            orderedEventIds.push(id);
+            seen.add(id);
+          }
+        }
+      }
+      
+      // Add any selected events not in eventOrder
+      for (const id of data.eventIds) {
+        if (!seen.has(id)) {
+          orderedEventIds.push(id);
+        }
+      }
+      
+      // Convert event order IDs to names for saving
+      const eventOrderToSave = orderedEventIds.length > 0
+        ? orderedEventIds.map((id) => {
             if (id.startsWith("custom-")) {
               const event = configuredEvents.find((e) => e.id === id);
               return event ? event.name : id;
