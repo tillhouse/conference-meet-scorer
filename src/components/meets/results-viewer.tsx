@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatName, formatTeamName, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
+import { sortEventsByOrder } from "@/lib/event-utils";
 
 interface Meet {
   id: string;
@@ -84,6 +85,7 @@ interface ResultsViewerProps {
   events: Event[];
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
+  eventOrder?: string[] | null;
 }
 
 export function ResultsViewer({
@@ -91,6 +93,7 @@ export function ResultsViewer({
   events,
   individualScoring,
   relayScoring,
+  eventOrder,
 }: ResultsViewerProps) {
   const [selectedEvent, setSelectedEvent] = useState<string | null>(null);
 
@@ -183,16 +186,18 @@ export function ResultsViewer({
 
   const allEvents = Array.from(allEventsMap.values());
 
-  // Sort events by type and name
-  const sortedEvents = [...allEvents].sort((a, b) => {
-    if (a.eventType !== b.eventType) {
-      if (a.eventType === "individual") return -1;
-      if (b.eventType === "individual") return 1;
-      if (a.eventType === "relay") return -1;
-      if (b.eventType === "relay") return 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  // Sort events using meet's eventOrder if available, otherwise by type and name
+  const sortedEvents = eventOrder 
+    ? sortEventsByOrder(allEvents, eventOrder)
+    : [...allEvents].sort((a, b) => {
+        if (a.eventType !== b.eventType) {
+          if (a.eventType === "individual") return -1;
+          if (b.eventType === "individual") return 1;
+          if (a.eventType === "relay") return -1;
+          if (b.eventType === "relay") return 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
 
   const swimmingEvents = sortedEvents.filter((e) => e.eventType === "individual");
   const divingEvents = sortedEvents.filter((e) => e.eventType === "diving");
