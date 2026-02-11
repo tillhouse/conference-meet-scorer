@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { EventNavigation } from "@/components/meets/event-navigation";
 import { MeetNavigation } from "@/components/meets/meet-navigation";
+import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 
 export default async function EventDetailPage({
   params,
@@ -149,13 +150,7 @@ export default async function EventDetailPage({
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" asChild>
-            <Link href={`/meets/${id}`}>
-              Back to Meet
-            </Link>
-          </Button>
-        </div>
+        <BackToMeetButton meetId={id} />
       </div>
 
       {/* Navigation */}

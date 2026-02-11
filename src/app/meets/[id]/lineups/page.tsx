@@ -6,6 +6,7 @@ import { ArrowLeft, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { LineupSelector } from "@/components/meets/lineup-selector";
 import { LineupNavigation } from "@/components/meets/lineup-navigation";
+import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 
 export default async function MeetLineupsPage({
   params,
@@ -104,18 +105,16 @@ export default async function MeetLineupsPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/meets/${id}/roster`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Set Event Lineups</h1>
-          <p className="text-slate-600 mt-1">
-            Select which events each athlete will compete in for {meet.name}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Set Event Lineups</h1>
+            <p className="text-slate-600 mt-1">
+              Select which events each athlete will compete in for {meet.name}
+            </p>
+          </div>
         </div>
+        <BackToMeetButton meetId={id} />
       </div>
 
       {/* Constraints Info */}

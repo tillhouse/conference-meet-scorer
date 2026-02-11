@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { generateScoringTable } from "@/lib/scoring";
 import { UnifiedEventManager } from "@/components/meets/unified-event-manager";
 import { getDefaultEventOrder } from "@/lib/default-event-order";
+import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 
 const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
@@ -602,18 +603,16 @@ export default function EditMeetPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/meets/${meetId}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Edit Meet</h1>
-          <p className="text-slate-600 mt-1">
-            Update meet configuration and settings
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Edit Meet</h1>
+            <p className="text-slate-600 mt-1">
+              Update meet configuration and settings
+            </p>
+          </div>
         </div>
+        <BackToMeetButton meetId={meetId} />
       </div>
 
       {/* Form */}

@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Users, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { RosterSelector } from "@/components/meets/roster-selector";
+import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 
 export default async function MeetRosterPage({
   params,
@@ -58,18 +59,16 @@ export default async function MeetRosterPage({
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" asChild>
-          <Link href={`/meets/${id}`}>
-            <ArrowLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Set Team Rosters</h1>
-          <p className="text-slate-600 mt-1">
-            Select athletes for each team participating in {meet.name}
-          </p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Set Team Rosters</h1>
+            <p className="text-slate-600 mt-1">
+              Select athletes for each team participating in {meet.name}
+            </p>
+          </div>
         </div>
+        <BackToMeetButton meetId={id} />
       </div>
 
       {/* Constraints Info */}
