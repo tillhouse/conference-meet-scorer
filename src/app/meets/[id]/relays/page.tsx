@@ -4,9 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
-import { RelayCreator } from "@/components/meets/relay-creator";
-import { RelayNavigation } from "@/components/meets/relay-navigation";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { MeetRelaysPageClient } from "./page-client";
 
 // Standard relay events with their leg distances
 const RELAY_EVENTS = [
@@ -176,26 +175,13 @@ export default async function MeetRelaysPage({
         </CardContent>
       </Card>
 
-      {/* Relay Creators for Each Team */}
-      <div className="space-y-6">
-        {meet.meetTeams.map((meetTeam) => (
-          <RelayCreator
-            key={meetTeam.id}
-            meetId={id}
-            meetTeam={meetTeam}
-            team={meetTeam.team}
-            relayEvents={relayEvents}
-            maxRelays={meet.maxRelays}
-          />
-        ))}
-      </div>
-
-      {/* Navigation */}
-      <RelayNavigation
+      {/* Client Component with Team Filter */}
+      <MeetRelaysPageClient
         meetId={id}
-        teamIds={meet.meetTeams.map((mt) => mt.teamId)}
-        backUrl={`/meets/${id}/lineups`}
-        nextUrl={`/meets/${id}`}
+        meetTeams={meet.meetTeams}
+        relayEvents={relayEvents}
+        maxRelays={meet.maxRelays}
+        meetName={meet.name}
       />
     </div>
   );

@@ -4,9 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ListChecks } from "lucide-react";
 import Link from "next/link";
-import { LineupSelector } from "@/components/meets/lineup-selector";
-import { LineupNavigation } from "@/components/meets/lineup-navigation";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { MeetLineupsPageClient } from "./page-client";
 
 export default async function MeetLineupsPage({
   params,
@@ -132,29 +131,16 @@ export default async function MeetLineupsPage({
         </CardContent>
       </Card>
 
-      {/* Team Lineups */}
-      <div className="space-y-6">
-        {meet.meetTeams.map((meetTeam) => (
-          <LineupSelector
-            key={meetTeam.id}
-            meetId={id}
-            meetTeam={meetTeam}
-            team={meetTeam.team}
-            swimmingEvents={swimmingEvents}
-            divingEvents={divingEvents}
-            maxIndivEvents={meet.maxIndivEvents}
-            maxRelays={meet.maxRelays}
-            maxDivingEvents={meet.maxDivingEvents}
-          />
-        ))}
-      </div>
-
-      {/* Navigation */}
-      <LineupNavigation
+      {/* Client Component with Team Filter */}
+      <MeetLineupsPageClient
         meetId={id}
-        teamIds={meet.meetTeams.map((mt) => mt.teamId)}
-        backUrl={`/meets/${id}/roster`}
-        nextUrl={`/meets/${id}/relays`}
+        meetTeams={meet.meetTeams}
+        swimmingEvents={swimmingEvents}
+        divingEvents={divingEvents}
+        maxIndivEvents={meet.maxIndivEvents}
+        maxRelays={meet.maxRelays}
+        maxDivingEvents={meet.maxDivingEvents}
+        meetName={meet.name}
       />
     </div>
   );
