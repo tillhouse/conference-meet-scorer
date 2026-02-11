@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,7 @@ export function RelayCreator({
   relayEvents,
   maxRelays,
 }: RelayCreatorProps) {
+  const router = useRouter();
   const [relayEntries, setRelayEntries] = useState<Record<string, RelayEntry>>({});
   const [savedRelayEntries, setSavedRelayEntries] = useState<Record<string, RelayEntry>>({});
   const [correctionFactor, setCorrectionFactor] = useState(0.5);
@@ -286,8 +288,9 @@ export function RelayCreator({
       // Reset local state
       const entries: Record<string, RelayEntry> = {};
       relayEvents.forEach((event) => {
-        entries[event.id] = {
-          eventId: event.id,
+        const eventName = event.name || event.id;
+        entries[eventName] = {
+          eventId: eventName,
           athletes: [null, null, null, null],
           times: [null, null, null, null],
           useRelaySplits: [false, true, true, true],
@@ -415,6 +418,9 @@ export function RelayCreator({
           setSavedRelayEntries(JSON.parse(JSON.stringify(merged)));
         }
       }
+      
+      // Refresh router to ensure server components re-fetch data
+      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save relays");
     } finally {
@@ -583,8 +589,10 @@ export function RelayCreator({
           </TabsList>
 
           {relayEvents.map((event) => {
-            const entry = relayEntries[event.id] || {
-              eventId: event.id,
+            // Use event name as key (entries are stored by event name, not ID)
+            const eventName = event.name || event.id;
+            const entry = relayEntries[eventName] || {
+              eventId: eventName,
               athletes: [null, null, null, null],
               times: [null, null, null, null],
               useRelaySplits: [false, true, true, true],
@@ -602,7 +610,7 @@ export function RelayCreator({
                       athleteId,
                       legIndex,
                       stroke,
-                      event.id,
+                      eventName,
                       useRelaySplit,
                       customTime,
                       distance
@@ -632,10 +640,10 @@ export function RelayCreator({
                             value={athleteId || "none"}
                             onValueChange={(value) => {
                               const newEntries = { ...relayEntries };
-                              if (!newEntries[event.id]) {
-                                newEntries[event.id] = { ...entry };
+                              if (!newEntries[eventName]) {
+                                newEntries[eventName] = { ...entry };
                               }
-                              newEntries[event.id].athletes[legIndex] = value === "none" ? null : value;
+                              newEntries[eventName].athletes[legIndex] = value === "none" ? null : value;
                               setRelayEntries(newEntries);
                             }}
                           >
@@ -660,10 +668,10 @@ export function RelayCreator({
                                 value={useRelaySplit ? "split" : "flat"}
                                 onValueChange={(value) => {
                                   const newEntries = { ...relayEntries };
-                                  if (!newEntries[event.id]) {
-                                    newEntries[event.id] = { ...entry };
+                                  if (!newEntries[eventName]) {
+                                    newEntries[eventName] = { ...entry };
                                   }
-                                  newEntries[event.id].useRelaySplits[legIndex] = value === "split";
+                                  newEntries[eventName].useRelaySplits[legIndex] = value === "split";
                                   setRelayEntries(newEntries);
                                 }}
                               >
@@ -696,10 +704,10 @@ export function RelayCreator({
                                   value={customTime || ""}
                                   onChange={(e) => {
                                     const newEntries = { ...relayEntries };
-                                    if (!newEntries[event.id]) {
-                                      newEntries[event.id] = { ...entry };
+                                    if (!newEntries[eventName]) {
+                                      newEntries[eventName] = { ...entry };
                                     }
-                                    newEntries[event.id].times[legIndex] = e.target.value || null;
+                                    newEntries[eventName].times[legIndex] = e.target.value || null;
                                     setRelayEntries(newEntries);
                                   }}
                                   className="h-8 text-xs"
@@ -726,7 +734,7 @@ export function RelayCreator({
                               entry.athletes[idx],
                               idx,
                               stroke,
-                              event.id,
+                              eventName,
                               entry.useRelaySplits[idx],
                               entry.times[idx],
                               event.distances[idx]
@@ -744,7 +752,7 @@ export function RelayCreator({
                           entry.athletes[idx],
                           idx,
                           stroke,
-                          event.id,
+                          eventName,
                           entry.useRelaySplits[idx],
                           entry.times[idx],
                           event.distances[idx]

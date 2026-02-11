@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronRight } from "lucide-react";
-import { formatName, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
+import { formatName, normalizeTimeFormat, parseTimeToSeconds, formatTeamName } from "@/lib/utils";
 
 interface MeetLineup {
   id: string;
