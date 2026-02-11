@@ -70,9 +70,14 @@ export async function POST(
     const data = saveRelaySchema.parse(body);
     console.log("Parsed relay data:", { relayCount: data.relays.length });
 
-    // Verify meet exists
+    // Verify meet exists and get selected events
     const meet = await prisma.meet.findUnique({
       where: { id: meetId },
+      select: {
+        id: true,
+        maxRelays: true,
+        selectedEvents: true,
+      },
     });
 
     if (!meet) {
@@ -81,6 +86,22 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    // Get selected event IDs from meet
+    const selectedEventIds = meet.selectedEvents
+      ? (JSON.parse(meet.selectedEvents) as string[])
+      : [];
+
+    // Get all events that are selected for this meet (to ensure we use the correct event IDs)
+    const meetEvents = await prisma.event.findMany({
+      where: {
+        id: { in: selectedEventIds },
+        eventType: "relay",
+      },
+    });
+
+    // Create a map of event names to event IDs for quick lookup
+    const eventNameToIdMap = new Map(meetEvents.map((e) => [e.name, e.id]));
 
     // Validate relay limit per athlete
     const athleteRelayCount: Record<string, number> = {};
@@ -116,27 +137,8 @@ export async function POST(
       );
     }
 
-    // Ensure relay events exist
-    // relay.eventId is the event name (e.g., "200 Medley Relay"), not the database ID
-    for (const relay of data.relays) {
-      let event = await prisma.event.findFirst({
-        where: { name: relay.eventId },
-      });
-
-      if (!event) {
-        // Create the relay event if it doesn't exist
-        event = await prisma.event.create({
-          data: {
-            name: relay.eventId,
-            fullName: relay.eventId,
-            eventType: "relay",
-            sortOrder: 0,
-          },
-        });
-      }
-    }
-
-    // Delete existing relay entries for this team
+    // Delete existing relay entries for this team BEFORE creating new ones
+    // This ensures we don't have duplicates if save is called multiple times
     await prisma.relayEntry.deleteMany({
       where: {
         meetId,
@@ -165,15 +167,26 @@ export async function POST(
         }
       }
 
-      // relay.eventId is the event name (e.g., "200 Medley Relay")
-      let event = await prisma.event.findFirst({
-        where: { name: relay.eventId },
-      });
-      if (!event) {
-        console.log(`Event not found, creating: ${relay.eventId}`);
-        // Try to create it
+      // relay.eventId is the event name (e.g., "200 Free Relay")
+      // First, try to find the event in the meet's selected events
+      let eventId: string | null = eventNameToIdMap.get(relay.eventId) || null;
+      
+      // If not found in selected events, try to find it in the database
+      if (!eventId) {
+        const event = await prisma.event.findFirst({
+          where: { name: relay.eventId, eventType: "relay" },
+        });
+        if (event) {
+          eventId = event.id;
+          console.log(`Found relay event "${relay.eventId}" with ID ${eventId} (not in selected events)`);
+        }
+      }
+
+      // If still not found, create it (shouldn't happen if meet is set up correctly)
+      if (!eventId) {
+        console.warn(`Relay event "${relay.eventId}" not found in meet's selected events or database. Creating new event.`);
         try {
-          event = await prisma.event.create({
+          const newEvent = await prisma.event.create({
             data: {
               name: relay.eventId,
               fullName: relay.eventId,
@@ -181,17 +194,18 @@ export async function POST(
               sortOrder: 0,
             },
           });
-          console.log(`Created missing event: ${relay.eventId} with ID: ${event.id}`);
+          eventId = newEvent.id;
+          console.log(`Created new relay event "${relay.eventId}" with ID ${eventId}`);
         } catch (createError) {
           console.error(`Failed to create event ${relay.eventId}:`, createError);
-          continue;
+          continue; // Skip this relay if we can't create/find the event
         }
       }
 
       entriesToCreate.push({
         meetId,
         teamId,
-        eventId: event.id,
+        eventId: eventId,
         seedTime: totalTime,
         seedTimeSeconds: totalSeconds,
         members: JSON.stringify(relay.members),

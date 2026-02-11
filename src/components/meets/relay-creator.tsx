@@ -80,9 +80,11 @@ export function RelayCreator({
   // Initialize relay entries
   useEffect(() => {
     const entries: Record<string, RelayEntry> = {};
+    // Use event name as key (not ID) to ensure consistency with saved relays
     relayEvents.forEach((event) => {
-      entries[event.id] = {
-        eventId: event.id,
+      const eventName = event.name || event.id; // Use name if available, fallback to id
+      entries[eventName] = {
+        eventId: eventName, // Store event name, not database ID
         athletes: [null, null, null, null],
         times: [null, null, null, null],
         useRelaySplits: [false, true, true, true], // First leg uses flat-start, others default to relay splits
@@ -98,10 +100,9 @@ export function RelayCreator({
           const loaded: Record<string, RelayEntry> = {};
           data.relays.forEach((relay: any) => {
             // Use event name as key (relay.eventId is the event name from API)
-            // Skip if eventId looks like a database ID (long alphanumeric string) instead of event name
             const eventName = relay.eventId;
-            if (eventName && eventName.length < 20 && /^[\d\sA-Z]+$/.test(eventName)) {
-              // Valid event name (e.g., "200 Medley Relay", "400 Free Relay")
+            if (eventName) {
+              // Accept any event name (removed strict regex check)
               loaded[eventName] = {
                 eventId: eventName,
                 athletes: relay.members || [null, null, null, null],
@@ -109,11 +110,11 @@ export function RelayCreator({
                 useRelaySplits: relay.useRelaySplits || [false, true, true, true],
               };
             } else {
-              // Skip old format entries with database IDs
-              console.warn(`Skipping relay entry with invalid eventId format: ${eventName}`);
+              console.warn(`Skipping relay entry with missing eventId`);
             }
           });
           // Merge with initialized entries to ensure all events are present
+          // This ensures saved relays are loaded, and any new events are also included
           const merged = { ...entries, ...loaded };
           setRelayEntries(merged);
           setSavedRelayEntries(JSON.parse(JSON.stringify(merged))); // Deep copy
@@ -248,7 +249,8 @@ export function RelayCreator({
     const assignments: Record<string, { count: number; relays: string[] }> = {};
 
     Object.entries(relayEntries).forEach(([eventId, entry]) => {
-      const event = relayEvents.find((e) => e.id === eventId);
+      // Find event by name (eventId is the event name, not database ID)
+      const event = relayEvents.find((e) => (e.name || e.id) === eventId);
       const eventName = event?.name || eventId;
 
       entry.athletes.forEach((athleteId) => {
@@ -313,7 +315,8 @@ export function RelayCreator({
       // Calculate actual times for each leg before saving
       const relays = Object.values(relayEntries)
         .map((entry) => {
-          const event = relayEvents.find((e) => e.id === entry.eventId);
+          // Find event by name (entry.eventId is the event name, not database ID)
+          const event = relayEvents.find((e) => (e.name || e.id) === entry.eventId);
           if (!event) {
             console.warn(`Event not found for entry: ${entry.eventId}`);
             return null;
@@ -387,6 +390,31 @@ export function RelayCreator({
       toast.success(`${formatTeamName(team.name, team.schoolName)} relays saved successfully`);
       // Update saved state
       setSavedRelayEntries(JSON.parse(JSON.stringify(relayEntries))); // Deep copy
+      
+      // Reload relays from server to ensure we have the latest data
+      // This ensures that if event IDs were resolved, we get the correct data back
+      const reloadResponse = await fetch(`/api/meets/${meetId}/relays/${meetTeam.teamId}`);
+      if (reloadResponse.ok) {
+        const reloadData = await reloadResponse.json();
+        if (reloadData.relays && reloadData.relays.length > 0) {
+          const reloaded: Record<string, RelayEntry> = {};
+          reloadData.relays.forEach((relay: any) => {
+            const eventName = relay.eventId;
+            if (eventName) {
+              reloaded[eventName] = {
+                eventId: eventName,
+                athletes: relay.members || [null, null, null, null],
+                times: relay.times || [null, null, null, null],
+                useRelaySplits: relay.useRelaySplits || [false, true, true, true],
+              };
+            }
+          });
+          // Merge with current entries to preserve any unsaved changes
+          const merged = { ...relayEntries, ...reloaded };
+          setRelayEntries(merged);
+          setSavedRelayEntries(JSON.parse(JSON.stringify(merged)));
+        }
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save relays");
     } finally {
