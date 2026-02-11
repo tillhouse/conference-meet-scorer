@@ -278,32 +278,44 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
         {!showAdvancedStats ? (
           // Standard View
           <div className="space-y-4">
-            <div className="grid gap-4 border-b pb-2" style={{ gridTemplateColumns: "40px 1fr repeat(4, minmax(0, 1fr))" }}>
+            <div className="grid gap-4 border-b pb-2" style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}>
               <div className="font-semibold text-sm text-slate-600">Rank</div>
               {renderSortableHeader("Team", "team", "left")}
               {renderSortableHeader("Individual", "individual", "right")}
               {renderSortableHeader("Relays", "relays", "right")}
               {renderSortableHeader("Diving", "diving", "right")}
               {renderSortableHeader("Total", "total", "right")}
+              <div className="font-semibold text-sm text-slate-600 text-right">Points Behind</div>
             </div>
-            {sortedTeams.map((meetTeam, index) => (
-              <div
-                key={meetTeam.id}
-                className="grid gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
-                style={{ gridTemplateColumns: "40px 1fr repeat(4, minmax(0, 1fr))" }}
-              >
-                <div className="font-bold text-base">{index + 1}</div>
-                <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
-                  {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+            {sortedTeams.map((meetTeam, index) => {
+              // Calculate points behind first place
+              const firstPlaceScore = sortedTeams[0]?.totalScore || 0;
+              const pointsBehind = index === 0 
+                ? null 
+                : firstPlaceScore - meetTeam.totalScore;
+              
+              return (
+                <div
+                  key={meetTeam.id}
+                  className="grid gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
+                  style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}
+                >
+                  <div className="font-bold text-base">{index + 1}</div>
+                  <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
+                    {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                  </div>
+                  <div className="text-right font-medium text-base">{meetTeam.individualScore.toFixed(1)}</div>
+                  <div className="text-right font-medium text-base">{meetTeam.relayScore.toFixed(1)}</div>
+                  <div className="text-right font-medium text-base">{meetTeam.divingScore.toFixed(1)}</div>
+                  <div className="text-right font-bold text-lg">
+                    {meetTeam.totalScore.toFixed(1)}
+                  </div>
+                  <div className="text-right font-medium text-base text-slate-600">
+                    {pointsBehind === null ? "-" : pointsBehind.toFixed(1)}
+                  </div>
                 </div>
-                <div className="text-right font-medium text-base">{meetTeam.individualScore.toFixed(1)}</div>
-                <div className="text-right font-medium text-base">{meetTeam.relayScore.toFixed(1)}</div>
-                <div className="text-right font-medium text-base">{meetTeam.divingScore.toFixed(1)}</div>
-                <div className="text-right font-bold text-lg">
-                  {meetTeam.totalScore.toFixed(1)}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           // Advanced Stats View
