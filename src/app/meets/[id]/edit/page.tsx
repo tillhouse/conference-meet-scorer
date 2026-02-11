@@ -18,6 +18,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { generateScoringTable } from "@/lib/scoring";
 import { UnifiedEventManager } from "@/components/meets/unified-event-manager";
+import { getDefaultEventOrder } from "@/lib/default-event-order";
 
 const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
@@ -193,32 +194,116 @@ export default function EditMeetPage() {
           ? (JSON.parse(meetData.eventOrder) as string[])
           : null;
         
-        // Set event order (use existing or default to selected events order)
-        // Ensure eventOrder includes all selected events, maintaining order where possible
+        // Create maps for matching event IDs and names
+        // Note: eventsData is loaded from the API, so we need to wait for it
+        // We'll create the maps after eventsData is available
+        const eventIdMap = new Map(eventsData.map((e: any) => [e.id, e]));
+        const eventNameToIdMap = new Map(eventsData.map((e: any) => [e.name, e.id]));
+        
+        // Create standard event maps (these are computed from constants)
+        const swimmingEventOptions: Event[] = STANDARD_SWIMMING_EVENTS.map((eventName) => {
+          const existingEvent = eventsData.find((e: any) => e.name === eventName && e.eventType === "individual");
+          return {
+            id: existingEvent?.id || eventName,
+            name: eventName,
+            eventType: "individual",
+          };
+        });
+        const relayEventOptions: Event[] = STANDARD_RELAY_EVENTS.map((eventName) => {
+          const existingEvent = eventsData.find((e: any) => e.name === eventName && e.eventType === "relay");
+          return {
+            id: existingEvent?.id || eventName,
+            name: eventName,
+            eventType: "relay",
+          };
+        });
+        const divingEventOptions: Event[] = STANDARD_DIVING_EVENTS.map((eventName) => {
+          const keyPart = eventName.replace(" Diving", "").toLowerCase();
+          const existingEvent = eventsData.find(
+            (e: any) => e.eventType === "diving" && e.name.toLowerCase().includes(keyPart)
+          );
+          return {
+            id: existingEvent?.id || eventName,
+            name: eventName,
+            eventType: "diving",
+          };
+        });
+        
+        const allStandardEventsMap = new Map([
+          ...swimmingEventOptions.map((e) => [e.id, e]),
+          ...relayEventOptions.map((e) => [e.id, e]),
+          ...divingEventOptions.map((e) => [e.id, e]),
+        ]);
+        const allStandardEventsNameToIdMap = new Map([
+          ...swimmingEventOptions.map((e) => [e.name, e.id]),
+          ...relayEventOptions.map((e) => [e.name, e.id]),
+          ...divingEventOptions.map((e) => [e.name, e.id]),
+        ]);
+        
+        // Convert eventOrder to IDs (handles both IDs and names)
+        let eventOrderIds: string[] = [];
         if (existingEventOrder && existingEventOrder.length > 0) {
-          // Filter to only include events that are still selected, and add any missing ones
-          const ordered: string[] = [];
-          const seen = new Set<string>();
-          
-          // Add events in existing order that are still selected
-          for (const id of existingEventOrder) {
-            if (selectedEventIds.includes(id)) {
-              ordered.push(id);
-              seen.add(id);
+          eventOrderIds = existingEventOrder.map((item: string) => {
+            // If it's already an ID (exists in eventIdMap or allStandardEventsMap)
+            if (eventIdMap.has(item) || allStandardEventsMap.has(item)) {
+              return item;
             }
-          }
-          
-          // Add any selected events not in existing order
-          for (const id of selectedEventIds) {
-            if (!seen.has(id)) {
-              ordered.push(id);
+            // Try to find by name in database events
+            if (eventNameToIdMap.has(item)) {
+              return eventNameToIdMap.get(item)!;
             }
-          }
+            // Try to find by name in standard events
+            if (allStandardEventsNameToIdMap.has(item)) {
+              return allStandardEventsNameToIdMap.get(item)!;
+            }
+            // If we can't find it, return as-is (might be a custom event)
+            return item;
+          });
+        } else if (meetData.meetType === "championship") {
+          // No eventOrder exists, use default order for championship meets
+          const defaultOrder = getDefaultEventOrder("championship");
+          const defaultEventIds = defaultOrder
+            .map((name) => {
+              // Try to find in database events first
+              if (eventNameToIdMap.has(name)) {
+                return eventNameToIdMap.get(name)!;
+              }
+              // Then try standard events
+              if (allStandardEventsNameToIdMap.has(name)) {
+                return allStandardEventsNameToIdMap.get(name)!;
+              }
+              return null;
+            })
+            .filter((id): id is string => id !== null && selectedEventIds.includes(id));
           
-          setEventOrder(ordered);
+          // Add any selected events not in default order
+          const remainingIds = selectedEventIds.filter((id) => !defaultEventIds.includes(id));
+          eventOrderIds = [...defaultEventIds, ...remainingIds];
         } else {
-          setEventOrder(selectedEventIds);
+          // Dual meet or no default - use selectedEventIds order
+          eventOrderIds = selectedEventIds;
         }
+        
+        // Ensure eventOrder includes all selected events, maintaining order where possible
+        const ordered: string[] = [];
+        const seen = new Set<string>();
+        
+        // Add events in eventOrderIds that are still selected
+        for (const id of eventOrderIds) {
+          if (selectedEventIds.includes(id)) {
+            ordered.push(id);
+            seen.add(id);
+          }
+        }
+        
+        // Add any selected events not in eventOrderIds
+        for (const id of selectedEventIds) {
+          if (!seen.has(id)) {
+            ordered.push(id);
+          }
+        }
+        
+        setEventOrder(ordered);
 
         // Format date for input (YYYY-MM-DD)
         const dateValue = meetData.date
