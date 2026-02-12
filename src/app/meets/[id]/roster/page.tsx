@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Users, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
-import { RosterSelector } from "@/components/meets/roster-selector";
+import { RosterPageClient } from "./roster-page-client";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 
 export default async function MeetRosterPage({
@@ -100,19 +100,13 @@ export default async function MeetRosterPage({
       </Card>
 
       {/* Team Rosters */}
-      <div className="space-y-6">
-        {meet.meetTeams.map((meetTeam) => (
-          <RosterSelector
-            key={meetTeam.id}
-            meetId={id}
-            meetTeam={meetTeam}
-            team={meetTeam.team}
-            maxAthletes={maxAthletes}
-            diverRatio={diverRatio}
-            divingIncluded={meet.divingIncluded}
-          />
-        ))}
-      </div>
+      <RosterPageClient
+        meetId={id}
+        meetTeams={meet.meetTeams}
+        maxAthletes={maxAthletes}
+        diverRatio={diverRatio}
+        divingIncluded={meet.divingIncluded}
+      />
 
       {/* Navigation */}
       <div className="flex justify-end gap-4 pt-4 border-t">

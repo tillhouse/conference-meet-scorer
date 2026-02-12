@@ -140,6 +140,61 @@ export async function POST(
       throw updateError;
     }
 
+    // Enforce roster: only athletes in the current roster may have lineups or relay slots.
+    // Remove from events and relays any athlete on this team who is NOT in data.athleteIds.
+    const rosterIdSet = new Set(data.athleteIds);
+
+    // Delete all meet lineups for this meet where the athlete is on this team but not on the roster
+    const lineupsToDelete = await prisma.meetLineup.findMany({
+      where: {
+        meetId,
+        athlete: { teamId },
+      },
+      select: { id: true, athleteId: true },
+    });
+    const idsToDelete = lineupsToDelete
+      .filter((l) => !rosterIdSet.has(l.athleteId))
+      .map((l) => l.id);
+    if (idsToDelete.length > 0) {
+      await prisma.meetLineup.deleteMany({
+        where: { id: { in: idsToDelete } },
+      });
+    }
+
+    // Clear any relay member slot whose athlete is not on the roster
+    const teamRelays = await prisma.relayEntry.findMany({
+      where: { meetId, teamId },
+    });
+    for (const entry of teamRelays) {
+      const members: (string | null)[] = entry.members
+        ? (JSON.parse(entry.members) as (string | null)[])
+        : [null, null, null, null];
+      const legTimes: (string | null)[] = entry.legTimes
+        ? (JSON.parse(entry.legTimes) as (string | null)[])
+        : [null, null, null, null];
+      const useRelaySplits: boolean[] = entry.useRelaySplits
+        ? (JSON.parse(entry.useRelaySplits) as boolean[])
+        : [false, true, true, true];
+      let changed = false;
+      const newMembers = members.map((id) => {
+        if (id != null && !rosterIdSet.has(id)) {
+          changed = true;
+          return null;
+        }
+        return id;
+      });
+      if (changed) {
+        await prisma.relayEntry.update({
+          where: { id: entry.id },
+          data: {
+            members: JSON.stringify(newMembers),
+            legTimes: JSON.stringify(legTimes),
+            useRelaySplits: JSON.stringify(useRelaySplits),
+          },
+        });
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Roster saved successfully",

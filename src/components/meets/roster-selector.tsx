@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CheckCircle2, AlertCircle, Users } from "lucide-react";
-import { formatName } from "@/lib/utils";
+import { formatName, formatTeamName } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Athlete {
@@ -28,6 +28,9 @@ interface Athlete {
 interface Team {
   id: string;
   name: string;
+  schoolName?: string | null;
+  primaryColor?: string | null;
+  secondaryColor?: string | null;
   athletes: Athlete[];
 }
 
@@ -136,7 +139,7 @@ export function RosterSelector({
         throw new Error((error.error || "Failed to save roster") + errorDetails);
       }
 
-      toast.success(`${team.name} roster saved successfully`);
+      toast.success(`${formatTeamName(team.name, team.schoolName)} roster saved successfully`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to save roster");
     } finally {
@@ -147,12 +150,17 @@ export function RosterSelector({
   const swimmers = availableAthletes.filter((a) => !a.isDiver);
   const divers = availableAthletes.filter((a) => a.isDiver);
 
+  const displayName = formatTeamName(team.name, team.schoolName);
+  const accentStyle = team.primaryColor
+    ? { borderLeftColor: team.primaryColor, color: team.primaryColor }
+    : undefined;
+
   return (
-    <Card>
+    <Card className={team.primaryColor ? "border-l-4" : ""} style={team.primaryColor ? { borderLeftColor: team.primaryColor } : undefined}>
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{team.name}</CardTitle>
+            <CardTitle style={accentStyle}>{displayName}</CardTitle>
             <CardDescription>
               Select up to {maxAthletes} athletes (divers count as {diverRatio} of a swimmer)
             </CardDescription>
