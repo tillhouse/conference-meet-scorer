@@ -204,7 +204,7 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
     return (
       <button
         onClick={() => handleSort(column)}
-        className={`group flex items-center gap-1 font-semibold text-sm text-slate-600 hover:text-slate-900 transition-colors ${
+        className={`group flex items-center gap-1 font-semibold text-xs text-slate-600 hover:text-slate-900 transition-colors ${
           align === "right" ? "justify-end" : ""
         }`}
       >
@@ -221,18 +221,18 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
   if (meetTeams.length === 0) {
     return (
       <Card className="border-2">
-        <CardHeader>
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-2xl">Team Standings</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-xl">Team Standings</CardTitle>
+              <CardDescription className="text-sm">
                 Current standings for all participating teams
               </CardDescription>
             </div>
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="text-center py-8 text-slate-500">
+        <CardContent className="pt-0">
+          <div className="text-center py-6 text-slate-500 text-sm">
             <p>No teams added yet. Add teams to start scoring.</p>
           </div>
         </CardContent>
@@ -242,11 +242,11 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
 
   return (
     <Card className="border-2">
-      <CardHeader>
+      <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="text-2xl">Team Standings</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl">Team Standings</CardTitle>
+            <CardDescription className="text-sm">
               {showAdvancedStats 
                 ? "Advanced statistics for all participating teams"
                 : "Current standings for all participating teams"}
@@ -274,18 +274,18 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-0">
         {!showAdvancedStats ? (
           // Standard View
-          <div className="space-y-4">
-            <div className="grid gap-4 border-b pb-2" style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}>
-              <div className="font-semibold text-sm text-slate-600">Rank</div>
+          <div className="space-y-0">
+            <div className="grid gap-2 border-b pb-1.5" style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}>
+              <div className="font-semibold text-xs text-slate-600">Rank</div>
               {renderSortableHeader("Team", "team", "left")}
               {renderSortableHeader("Individual", "individual", "right")}
               {renderSortableHeader("Relays", "relays", "right")}
               {renderSortableHeader("Diving", "diving", "right")}
               {renderSortableHeader("Total", "total", "right")}
-              <div className="font-semibold text-sm text-slate-600 text-right">Points Behind</div>
+              <div className="font-semibold text-xs text-slate-600 text-right">Points Behind</div>
             </div>
             {sortedTeams.map((meetTeam, index) => {
               // Calculate points behind first place
@@ -297,20 +297,20 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
               return (
                 <div
                   key={meetTeam.id}
-                  className="grid gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
+                  className="grid gap-2 items-center py-2 border-b last:border-0 hover:bg-slate-50 transition-colors"
                   style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}
                 >
-                  <div className="font-bold text-base">{index + 1}</div>
-                  <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
+                  <div className="font-bold text-sm">{index + 1}</div>
+                  <div className="font-semibold text-sm" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
                     {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
                   </div>
-                  <div className="text-right font-medium text-base">{meetTeam.individualScore.toFixed(1)}</div>
-                  <div className="text-right font-medium text-base">{meetTeam.relayScore.toFixed(1)}</div>
-                  <div className="text-right font-medium text-base">{meetTeam.divingScore.toFixed(1)}</div>
-                  <div className="text-right font-bold text-lg">
+                  <div className="text-right font-medium text-sm">{meetTeam.individualScore.toFixed(1)}</div>
+                  <div className="text-right font-medium text-sm">{meetTeam.relayScore.toFixed(1)}</div>
+                  <div className="text-right font-medium text-sm">{meetTeam.divingScore.toFixed(1)}</div>
+                  <div className="text-right font-bold text-sm">
                     {meetTeam.totalScore.toFixed(1)}
                   </div>
-                  <div className="text-right font-medium text-base text-slate-600">
+                  <div className="text-right font-medium text-sm text-slate-600">
                     {pointsBehind === null ? "-" : pointsBehind.toFixed(1)}
                   </div>
                 </div>
@@ -319,9 +319,9 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
           </div>
         ) : (
           // Advanced Stats View
-          <div className="space-y-4">
-            <div className="grid gap-4 border-b pb-2" style={{ gridTemplateColumns: "40px 1fr repeat(6, minmax(0, 1fr))" }}>
-              <div className="font-semibold text-sm text-slate-600">Rank</div>
+          <div className="space-y-0">
+            <div className="grid gap-2 border-b pb-1.5" style={{ gridTemplateColumns: "40px 1fr repeat(6, minmax(0, 1fr))" }}>
+              <div className="font-semibold text-xs text-slate-600">Rank</div>
               {renderSortableHeader("Team", "team", "left")}
               {renderSortableHeader("Swimmers", "swimmers", "right")}
               {renderSortableHeader("Divers", "divers", "right")}
@@ -346,25 +346,25 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
               return (
                 <div
                   key={meetTeam.id}
-                  className="grid gap-4 items-center py-3 border-b last:border-0 hover:bg-slate-50 transition-colors"
+                  className="grid gap-2 items-center py-2 border-b last:border-0 hover:bg-slate-50 transition-colors"
                   style={{ gridTemplateColumns: "40px 1fr repeat(6, minmax(0, 1fr))" }}
                 >
-                  <div className="font-bold text-base">{index + 1}</div>
-                  <div className="font-semibold text-lg" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
+                  <div className="font-bold text-sm">{index + 1}</div>
+                  <div className="font-semibold text-sm" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
                     {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
                   </div>
-                  <div className="text-right font-medium text-base">{swimmerCount}</div>
-                  <div className="text-right font-medium text-base">{diverCount}</div>
-                  <div className="text-right font-medium text-base">
+                  <div className="text-right font-medium text-sm">{swimmerCount}</div>
+                  <div className="text-right font-medium text-sm">{diverCount}</div>
+                  <div className="text-right font-medium text-sm">
                     {pointsPerSwim > 0 ? pointsPerSwim.toFixed(2) : "-"}
                   </div>
-                  <div className="text-right font-medium text-base">
+                  <div className="text-right font-medium text-sm">
                     {pointsPerDive > 0 ? pointsPerDive.toFixed(2) : "-"}
                   </div>
-                  <div className="text-right font-medium text-base">
+                  <div className="text-right font-medium text-sm">
                     {pointsPerSplash > 0 ? pointsPerSplash.toFixed(2) : "-"}
                   </div>
-                  <div className="text-right font-bold text-lg">
+                  <div className="text-right font-bold text-sm">
                     {meetTeam.totalScore.toFixed(1)}
                   </div>
                 </div>

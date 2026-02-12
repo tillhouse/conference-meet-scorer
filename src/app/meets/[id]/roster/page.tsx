@@ -7,6 +7,7 @@ import { ArrowLeft, Users, CheckCircle2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { RosterPageClient } from "./roster-page-client";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { MeetSetupNav } from "@/components/meets/meet-setup-nav";
 
 export default async function MeetRosterPage({
   params,
@@ -70,6 +71,8 @@ export default async function MeetRosterPage({
         </div>
         <BackToMeetButton meetId={id} />
       </div>
+
+      <MeetSetupNav meetId={id} currentStep="roster" meetName={meet.name} />
 
       {/* Constraints Info */}
       <Card className="bg-blue-50 border-blue-200">

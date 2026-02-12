@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { LineupSelector } from "@/components/meets/lineup-selector";
@@ -12,6 +11,7 @@ interface Team {
   id: string;
   name: string;
   schoolName?: string | null;
+  primaryColor?: string | null;
   athletes: any[];
 }
 
@@ -49,40 +49,38 @@ export function MeetLineupsPageClient({
     ? meetTeams
     : meetTeams.filter((mt) => mt.teamId === selectedTeamId);
 
-  // Get unique team names for the filter dropdown
-  const teamOptions = meetTeams.map((mt) => ({
-    id: mt.teamId,
-    name: formatTeamName(mt.team.name, mt.team.schoolName),
-  }));
-
   return (
     <div className="space-y-6">
-      {/* Team Filter */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Filter by Team</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="max-w-xs">
-            <Label htmlFor="team-filter" className="text-sm font-medium text-slate-700 mb-2 block">
-              Select Team
-            </Label>
-            <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-              <SelectTrigger id="team-filter">
-                <SelectValue placeholder="All teams" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All teams</SelectItem>
-                {teamOptions.map((team) => (
-                  <SelectItem key={team.id} value={team.id}>
-                    {team.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Team Filter - matches Set Rosters styling */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="team-filter" className="text-sm font-medium text-slate-700">
+            Filter by team
+          </Label>
+          <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
+            <SelectTrigger id="team-filter" className="w-[280px]">
+              <SelectValue placeholder="All teams" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All teams</SelectItem>
+              {meetTeams.map((meetTeam) => (
+                <SelectItem key={meetTeam.id} value={meetTeam.teamId}>
+                  <span className="flex items-center gap-2">
+                    {meetTeam.team.primaryColor && (
+                      <span
+                        className="inline-block size-3 rounded-full shrink-0"
+                        style={{ backgroundColor: meetTeam.team.primaryColor }}
+                        aria-hidden
+                      />
+                    )}
+                    {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
       {/* Team Lineups */}
       <div className="space-y-6">

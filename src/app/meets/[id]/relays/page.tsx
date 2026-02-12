@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Users } from "lucide-react";
 import Link from "next/link";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { MeetSetupNav } from "@/components/meets/meet-setup-nav";
 import { MeetRelaysPageClient } from "./page-client";
 
 // Standard relay events with their leg distances
@@ -33,6 +34,7 @@ export default async function MeetRelaysPage({
               id: true,
               name: true,
               schoolName: true,
+              primaryColor: true,
               athletes: {
                 where: {
                   isEnabled: true,
@@ -156,6 +158,8 @@ export default async function MeetRelaysPage({
         </div>
         <BackToMeetButton meetId={id} />
       </div>
+
+      <MeetSetupNav meetId={id} currentStep="relays" meetName={meet.name} />
 
       {/* Constraints Info */}
       <Card className="bg-blue-50 border-blue-200">

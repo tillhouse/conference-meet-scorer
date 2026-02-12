@@ -266,13 +266,17 @@ export function MeetAthleteSummaryTable({
     return Array.from(summariesMap.values());
   }, [meetLineups, relayEntries, individualScoring, relayScoring, scoringPlaces]);
 
-  // Get unique teams and years for filters
+  // Get unique teams (with color) and years for filters
   const availableTeams = useMemo(() => {
-    const teams = new Set<string>();
+    const map = new Map<string, string | null>();
     athleteSummaries.forEach((summary) => {
-      teams.add(summary.teamName);
+      if (!map.has(summary.teamName)) {
+        map.set(summary.teamName, summary.teamColor);
+      }
     });
-    return Array.from(teams).sort();
+    return Array.from(map.entries())
+      .map(([teamName, teamColor]) => ({ teamName, teamColor }))
+      .sort((a, b) => a.teamName.localeCompare(b.teamName));
   }, [athleteSummaries]);
 
   const availableYears = useMemo(() => {
@@ -399,9 +403,18 @@ export function MeetAthleteSummaryTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All teams</SelectItem>
-              {availableTeams.map((team) => (
-                <SelectItem key={team} value={team}>
-                  {team}
+              {availableTeams.map(({ teamName, teamColor }) => (
+                <SelectItem key={teamName} value={teamName}>
+                  <span className="flex items-center gap-2">
+                    {teamColor && (
+                      <span
+                        className="inline-block size-3 rounded-full shrink-0"
+                        style={{ backgroundColor: teamColor }}
+                        aria-hidden
+                      />
+                    )}
+                    {teamName}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

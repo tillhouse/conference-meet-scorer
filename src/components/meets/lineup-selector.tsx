@@ -42,6 +42,7 @@ interface Team {
   id: string;
   name: string;
   schoolName?: string | null;
+  primaryColor?: string | null;
   athletes: Athlete[];
 }
 
@@ -239,12 +240,18 @@ export function LineupSelector({
   const swimmers = team.athletes.filter((a) => !a.isDiver);
   const divers = team.athletes.filter((a) => a.isDiver);
 
+  const displayName = formatTeamName(team.name, team.schoolName);
+  const accentStyle = team.primaryColor ? { color: team.primaryColor } : undefined;
+
   return (
-    <Card>
+    <Card
+      className={team.primaryColor ? "border-l-4" : ""}
+      style={team.primaryColor ? { borderLeftColor: team.primaryColor } : undefined}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{formatTeamName(team.name, team.schoolName)}</CardTitle>
+            <CardTitle style={accentStyle}>{displayName}</CardTitle>
             <CardDescription>
               Select events for each athlete
             </CardDescription>

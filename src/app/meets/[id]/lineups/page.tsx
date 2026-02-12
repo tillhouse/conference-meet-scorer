@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { MeetSetupNav } from "@/components/meets/meet-setup-nav";
 import { MeetLineupsPageClient } from "./page-client";
 
 export default async function MeetLineupsPage({
@@ -24,6 +25,7 @@ export default async function MeetLineupsPage({
               id: true,
               name: true,
               schoolName: true,
+              primaryColor: true,
               athletes: {
                 where: {
                   isEnabled: true,
@@ -115,6 +117,8 @@ export default async function MeetLineupsPage({
         </div>
         <BackToMeetButton meetId={id} />
       </div>
+
+      <MeetSetupNav meetId={id} currentStep="lineups" meetName={meet.name} />
 
       {/* Constraints Info */}
       <Card className="bg-blue-50 border-blue-200">

@@ -8,9 +8,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
-import { formatName, formatTeamName, parseTimeToSeconds, formatSecondsToTime, normalizeTimeFormat } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { CheckCircle2, AlertCircle, Trash2, Pencil } from "lucide-react";
+import { formatName, formatTeamName, parseTimeToSeconds, formatSecondsToTime, normalizeTimeFormat, normalizeEventName } from "@/lib/utils";
 import { toast } from "sonner";
 
 interface Athlete {
@@ -34,6 +41,7 @@ interface Team {
   id: string;
   name: string;
   schoolName?: string | null;
+  primaryColor?: string | null;
   athletes: Athlete[];
 }
 
@@ -78,6 +86,11 @@ export function RelayCreator({
   const [correctionFactor, setCorrectionFactor] = useState(0.5);
   const [saving, setSaving] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const firstEventName = relayEvents[0] ? (relayEvents[0].name || relayEvents[0].id) : "";
+  const [selectedEventName, setSelectedEventName] = useState<string>(firstEventName);
+  // Which leg is in "custom time" edit mode: "eventName:legIndex" or null
+  const [editingLegKey, setEditingLegKey] = useState<string | null>(null);
+  const [editingLegValue, setEditingLegValue] = useState<string>("");
 
   // Initialize relay entries
   useEffect(() => {
@@ -131,6 +144,7 @@ export function RelayCreator({
       });
   }, [meetId, meetTeam.teamId, relayEvents]);
 
+
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     const current = JSON.stringify(relayEntries);
@@ -146,14 +160,16 @@ export function RelayCreator({
     return events;
   };
 
-  // Get athlete's time for an event
+  // Get athlete's time for an event (matches "50 FR" to "50 Free" etc. via normalizeEventName)
   const getAthleteTime = (athleteId: string, eventName: string, isRelaySplit: boolean) => {
     const athlete = team.athletes.find((a) => a.id === athleteId);
     if (!athlete) return null;
+    const normalizedSearch = normalizeEventName(eventName);
 
-    const eventTime = athlete.eventTimes.find(
-      (et) => et.event.name === eventName && et.isRelaySplit === isRelaySplit
-    );
+    const eventTime = athlete.eventTimes.find((et) => {
+      const normalizedEt = normalizeEventName(et.event.name);
+      return normalizedEt === normalizedSearch && et.isRelaySplit === isRelaySplit;
+    });
     return eventTime ? { time: eventTime.time, seconds: eventTime.timeSeconds } : null;
   };
 
@@ -439,12 +455,18 @@ export function RelayCreator({
     };
   }, [hasUnsavedChanges, meetTeam.teamId]);
 
+  const displayName = formatTeamName(team.name, team.schoolName);
+  const accentStyle = team.primaryColor ? { color: team.primaryColor } : undefined;
+
   return (
-    <Card>
+    <Card
+      className={team.primaryColor ? "border-l-4" : ""}
+      style={team.primaryColor ? { borderLeftColor: team.primaryColor } : undefined}
+    >
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>{formatTeamName(team.name, team.schoolName)}</CardTitle>
+            <CardTitle style={accentStyle}>{displayName}</CardTitle>
             <CardDescription>
               Create relay lineups (max {maxRelays} relays per swimmer)
             </CardDescription>
@@ -477,11 +499,11 @@ export function RelayCreator({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Correction Factor */}
-        <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-lg">
-          <Label htmlFor="correctionFactor" className="whitespace-nowrap">
-            Flat-Start to Flying Exchange Correction:
+      <CardContent className="space-y-4">
+        {/* Correction factor - compact */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Label htmlFor="correctionFactor" className="text-slate-600">
+            Flat-start to flying exchange:
           </Label>
           <Input
             id="correctionFactor"
@@ -491,281 +513,393 @@ export function RelayCreator({
             max="2"
             value={correctionFactor}
             onChange={(e) => setCorrectionFactor(parseFloat(e.target.value) || 0.5)}
-            className="w-24"
+            className="w-16 h-8 text-sm"
           />
-          <span className="text-sm text-slate-600">seconds</span>
+          <span className="text-slate-500">sec</span>
         </div>
 
-        {/* Relay Assignments Summary */}
-        {Object.keys(athleteRelayAssignments).length > 0 && (
-          <Card className="bg-slate-50">
-            <CardHeader>
-              <CardTitle className="text-lg">Relay Assignments Summary</CardTitle>
-              <CardDescription>
-                Swimmers assigned to relays and their relay count
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {Object.entries(athleteRelayAssignments)
-                  .sort(([, a], [, b]) => b.count - a.count)
-                  .map(([athleteId, assignment]) => {
-                    const athlete = team.athletes.find((a) => a.id === athleteId);
-                    if (!athlete) return null;
-
-                    const isAtLimit = assignment.count >= maxRelays;
-                    const isNearLimit = assignment.count >= maxRelays - 1;
-
-                    return (
-                      <div
-                        key={athleteId}
-                        className={`p-3 rounded-lg border ${
-                          isAtLimit
-                            ? "bg-red-50 border-red-200"
-                            : isNearLimit
-                            ? "bg-yellow-50 border-yellow-200"
-                            : "bg-white border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium text-sm">
-                            {formatName(athlete.firstName, athlete.lastName)}
-                          </span>
-                          <Badge
-                            variant={
-                              isAtLimit
-                                ? "destructive"
-                                : isNearLimit
-                                ? "default"
-                                : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {assignment.count}/{maxRelays}
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-slate-600">
-                          <div className="font-semibold mb-1">Relays:</div>
-                          <div className="flex flex-wrap gap-1">
-                            {assignment.relays.map((relay, idx) => (
-                              <Badge
-                                key={idx}
-                                variant="outline"
-                                className="text-[10px] py-0 px-1.5"
-                              >
-                                {relay}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Validation Errors */}
+        {/* Validation Errors - compact */}
         {!validation.isValid && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <h4 className="font-semibold text-red-900 mb-2">Relay Limit Violations:</h4>
-            <ul className="list-disc list-inside text-sm text-red-800">
-              {validation.violations.map((violation, idx) => (
-                <li key={idx}>{violation}</li>
-              ))}
-            </ul>
+          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-sm text-red-800">
+            <span className="font-semibold">Violations: </span>
+            {validation.violations.join("; ")}
           </div>
         )}
 
-        {/* Relay Events */}
-        <Tabs defaultValue={relayEvents[0]?.id} className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
-            {relayEvents.map((event) => (
-              <TabsTrigger key={event.id} value={event.id}>
-                {event.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          {relayEvents.map((event) => {
-            // Use event name as key (entries are stored by event name, not ID)
-            const eventName = event.name || event.id;
-            const entry = relayEntries[eventName] || {
-              eventId: eventName,
-              athletes: [null, null, null, null],
-              times: [null, null, null, null],
-              useRelaySplits: [false, true, true, true],
-            };
-
-            return (
-              <TabsContent key={event.id} value={event.id} className="space-y-4 mt-4">
-                <div className="grid grid-cols-4 gap-4">
-                  {event.legs.map((stroke, legIndex) => {
-                    const athleteId = entry.athletes[legIndex];
-                    const customTime = entry.times[legIndex];
-                    const useRelaySplit = entry.useRelaySplits[legIndex];
-                    const distance = event.distances[legIndex];
-                    const calculatedTime = calculateLegTime(
-                      athleteId,
-                      legIndex,
-                      stroke,
-                      eventName,
-                      useRelaySplit,
-                      customTime,
-                      distance
-                    );
-
+        {/* Two-column: relay construction (left) + swimmers list (right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr,minmax(240px,320px)] gap-6">
+          {/* Left: Relay event dropdown + vertical leg table */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium text-slate-700">Relay event</Label>
+              <Select
+                value={selectedEventName || firstEventName}
+                onValueChange={(v) => setSelectedEventName(v)}
+              >
+                <SelectTrigger className="w-[220px]">
+                  <SelectValue placeholder="Select relay" />
+                </SelectTrigger>
+                <SelectContent>
+                  {relayEvents.map((event) => {
+                    const name = event.name || event.id;
                     return (
-                      <Card key={legIndex} className="p-4">
-                        <div className="space-y-3">
-                          <div>
-                            <Label className="font-semibold">
-                              Leg {legIndex + 1} - {distance} {stroke}
-                            </Label>
-                            {legIndex === 0 && (
-                              <p className="text-xs text-slate-500 mt-1">
-                                Flat-start time ({distance} {stroke})
-                              </p>
-                            )}
-                            {legIndex > 0 && (
-                              <p className="text-xs text-slate-500 mt-1">
-                                {useRelaySplit ? `Relay split (${distance} ${stroke})` : `Flat-start - ${correctionFactor}s (${distance} ${stroke})`}
-                              </p>
-                            )}
-                          </div>
-
-                          {/* Athlete Selector */}
-                          <Select
-                            value={athleteId || "none"}
-                            onValueChange={(value) => {
-                              const newEntries = { ...relayEntries };
-                              if (!newEntries[eventName]) {
-                                newEntries[eventName] = { ...entry };
-                              }
-                              newEntries[eventName].athletes[legIndex] = value === "none" ? null : value;
-                              setRelayEntries(newEntries);
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select athlete" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">None</SelectItem>
-                              {team.athletes.map((athlete) => (
-                                <SelectItem key={athlete.id} value={athlete.id}>
-                                  {formatName(athlete.firstName, athlete.lastName)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-
-                          {/* Time Source Toggle (for legs 2-4) */}
-                          {legIndex > 0 && athleteId && (
-                            <div className="flex items-center gap-2">
-                              <Label className="text-xs">Use:</Label>
-                              <Select
-                                value={useRelaySplit ? "split" : "flat"}
-                                onValueChange={(value) => {
-                                  const newEntries = { ...relayEntries };
-                                  if (!newEntries[eventName]) {
-                                    newEntries[eventName] = { ...entry };
-                                  }
-                                  newEntries[eventName].useRelaySplits[legIndex] = value === "split";
-                                  setRelayEntries(newEntries);
-                                }}
-                              >
-                                <SelectTrigger className="h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="split">Relay Split</SelectItem>
-                                  <SelectItem value="flat">Flat - {correctionFactor}s</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          )}
-
-                          {/* Calculated/Display Time */}
-                          {athleteId && (
-                            <div className="space-y-2">
-                              <div className="text-sm">
-                                <span className="text-slate-600">Time: </span>
-                                <span className="font-mono font-semibold">
-                                  {calculatedTime || "N/A"}
-                                </span>
-                              </div>
-                              {/* Custom Time Override */}
-                              <div>
-                                <Label className="text-xs">Custom Time (override):</Label>
-                                <Input
-                                  type="text"
-                                  placeholder="e.g., 19.25"
-                                  value={customTime || ""}
-                                  onChange={(e) => {
-                                    const newEntries = { ...relayEntries };
-                                    if (!newEntries[eventName]) {
-                                      newEntries[eventName] = { ...entry };
-                                    }
-                                    newEntries[eventName].times[legIndex] = e.target.value || null;
-                                    setRelayEntries(newEntries);
-                                  }}
-                                  className="h-8 text-xs"
-                                />
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </Card>
+                      <SelectItem key={event.id} value={name}>
+                        {event.name}
+                      </SelectItem>
                     );
                   })}
-                </div>
+                </SelectContent>
+              </Select>
+            </div>
 
-                {/* Relay Total Time */}
-                {entry.athletes.every((a) => a !== null) && (
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold">Estimated Relay Time:</span>
-                      <span className="font-mono text-lg font-bold">
-                        {(() => {
-                          const times = event.legs.map((stroke, idx) => {
-                            // Use custom time if provided, otherwise calculate
-                            const time = entry.times[idx] || calculateLegTime(
-                              entry.athletes[idx],
-                              idx,
-                              stroke,
-                              eventName,
-                              entry.useRelaySplits[idx],
-                              entry.times[idx],
-                              event.distances[idx]
-                            );
-                            return time ? parseTimeToSeconds(time) : 0;
-                          });
-                          const total = times.reduce((sum, t) => sum + t, 0);
-                          return total > 0 ? formatSecondsToTime(total) : "N/A";
-                        })()}
-                      </span>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-600">
-                      Leg times: {event.legs.map((stroke, idx) => {
-                        const time = entry.times[idx] || calculateLegTime(
-                          entry.athletes[idx],
-                          idx,
-                          stroke,
-                          eventName,
-                          entry.useRelaySplits[idx],
-                          entry.times[idx],
-                          event.distances[idx]
-                        );
-                        return `${event.distances[idx]} ${stroke}: ${time ? normalizeTimeFormat(time) : "N/A"}`;
-                      }).join(" • ")}
-                    </div>
+            {(() => {
+              const event = relayEvents.find((e) => (e.name || e.id) === selectedEventName) || relayEvents[0];
+              if (!event) return null;
+              const eventName = event.name || event.id;
+              const entry = relayEntries[eventName] || {
+                eventId: eventName,
+                athletes: [null, null, null, null],
+                times: [null, null, null, null],
+                useRelaySplits: [false, true, true, true],
+              };
+
+              return (
+                <>
+                  <div className="rounded-md border">
+                    <Table className="w-full">
+                      <TableHeader>
+                        <TableRow className="bg-slate-50">
+                          <TableHead className="w-12 px-3 py-2 text-xs">Pos</TableHead>
+                          <TableHead className="min-w-[11rem] px-4 py-2 pr-8 text-xs">Swimmer</TableHead>
+                          <TableHead className="w-[6.25rem] px-4 py-2 text-xs text-right">Relay Leg</TableHead>
+                          <TableHead className="w-[8.5rem] px-4 py-2 text-xs text-center">Time</TableHead>
+                          {event.legs.some((_, i) => i > 0) && (
+                            <TableHead className="w-[7.25rem] pl-4 pr-4 py-2 text-xs text-right">Source</TableHead>
+                          )}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {event.legs.map((stroke, legIndex) => {
+                          const athleteId = entry.athletes[legIndex];
+                          const customTime = entry.times[legIndex];
+                          const useRelaySplit = entry.useRelaySplits[legIndex];
+                          const distance = event.distances[legIndex];
+                          const calculatedTime = calculateLegTime(
+                            athleteId,
+                            legIndex,
+                            stroke,
+                            eventName,
+                            useRelaySplit,
+                            customTime,
+                            distance
+                          );
+                          const strokeLabel = `${distance} ${stroke}`;
+
+                          return (
+                            <TableRow key={legIndex} className="align-middle">
+                              <TableCell className="w-12 px-3 py-2 font-medium text-slate-600">
+                                {legIndex + 1}
+                              </TableCell>
+                              <TableCell className="min-w-[11rem] px-4 py-2 pr-8">
+                                <Select
+                                  value={athleteId || "none"}
+                                  onValueChange={(value) => {
+                                    const newEntries = { ...relayEntries };
+                                    if (!newEntries[eventName]) newEntries[eventName] = { ...entry };
+                                    newEntries[eventName].athletes[legIndex] = value === "none" ? null : value;
+                                    // Clear custom time for this leg so the displayed time updates to the new swimmer's calculated time
+                                    newEntries[eventName].times[legIndex] = null;
+                                    setRelayEntries(newEntries);
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-sm">
+                                    <SelectValue placeholder="Select" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="none">—</SelectItem>
+                                    {team.athletes.map((a) => (
+                                      <SelectItem key={a.id} value={a.id}>
+                                        {formatName(a.firstName, a.lastName)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              <TableCell className="w-[6.25rem] px-4 py-2 text-right text-slate-600 text-sm">
+                                {strokeLabel}
+                              </TableCell>
+                              <TableCell className="w-[8.5rem] px-4 py-2 text-center">
+                                {athleteId ? (
+                                  (() => {
+                                    const effectiveTime = customTime || calculatedTime || "";
+                                    const isEditing = editingLegKey === `${eventName}:${legIndex}`;
+                                    const handleSaveCustom = () => {
+                                      const val = editingLegValue.trim();
+                                      const newEntries = { ...relayEntries };
+                                      if (!newEntries[eventName]) newEntries[eventName] = { ...entry };
+                                      newEntries[eventName].times[legIndex] = val || null;
+                                      setRelayEntries(newEntries);
+                                      setEditingLegKey(null);
+                                      setEditingLegValue("");
+                                    };
+                                    if (isEditing) {
+                                      return (
+                                        <div className="grid grid-cols-[1fr_auto] gap-1 items-center justify-items-center">
+                                          <Input
+                                            type="text"
+                                            placeholder="e.g. 19.25"
+                                            value={editingLegValue}
+                                            onChange={(e) => setEditingLegValue(e.target.value)}
+                                            onBlur={handleSaveCustom}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") handleSaveCustom();
+                                              if (e.key === "Escape") {
+                                                setEditingLegKey(null);
+                                                setEditingLegValue("");
+                                              }
+                                            }}
+                                            className="h-8 min-w-[5.5rem] w-28 text-sm font-mono justify-self-center"
+                                            autoFocus
+                                          />
+                                          <span className="text-xs text-slate-500 whitespace-nowrap">Custom time</span>
+                                        </div>
+                                      );
+                                    }
+                                    return (
+                                      <div className="grid grid-cols-[1fr_auto] gap-1 items-center w-full">
+                                        <span className="font-mono text-sm justify-self-center">
+                                          {effectiveTime || "—"}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingLegKey(`${eventName}:${legIndex}`);
+                                            setEditingLegValue(effectiveTime || "");
+                                          }}
+                                          className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                          title="Edit custom time"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    );
+                                  })()
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </TableCell>
+                              {event.legs.some((_, i) => i > 0) && (
+                                <TableCell className="w-[7.25rem] pl-4 pr-4 py-2 text-right">
+                                  {legIndex > 0 && athleteId ? (
+                                    <Select
+                                      value={customTime != null && customTime !== "" ? "custom" : (useRelaySplit ? "split" : "flat")}
+                                      onValueChange={(value) => {
+                                        const newEntries = { ...relayEntries };
+                                        if (!newEntries[eventName]) newEntries[eventName] = { ...entry };
+                                        if (value === "custom") {
+                                          const calc = calculateLegTime(
+                                            athleteId,
+                                            legIndex,
+                                            stroke,
+                                            eventName,
+                                            useRelaySplit,
+                                            null,
+                                            distance
+                                          );
+                                          newEntries[eventName].times[legIndex] = calc || null;
+                                        } else {
+                                          newEntries[eventName].times[legIndex] = null;
+                                          newEntries[eventName].useRelaySplits[legIndex] = value === "split";
+                                        }
+                                        setRelayEntries(newEntries);
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 min-w-[7rem] text-sm">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value="split">Split</SelectItem>
+                                        <SelectItem value="flat">Flat −{correctionFactor}s</SelectItem>
+                                        <SelectItem value="custom">Custom</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                  ) : legIndex === 0 ? (
+                                    <span className="text-xs text-slate-500">Flat start</span>
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          );
+                        })}
+                        {entry.athletes.every((a) => a !== null) && (
+                          <TableRow className="bg-slate-50 border-t-2 border-slate-200">
+                            <TableCell className="w-12 px-3 py-2 font-medium text-slate-700">
+                              Total
+                            </TableCell>
+                            <TableCell className="min-w-[11rem] px-4 py-2 pr-8" />
+                            <TableCell className="w-[6.25rem] px-4 py-2" />
+                            <TableCell className="w-[8.5rem] px-4 py-2 text-center">
+                              <div className="grid grid-cols-[1fr_auto] gap-1 items-center w-full">
+                                <span className="font-mono font-bold justify-self-center">
+                                  {(() => {
+                                    const times = event.legs.map((stroke, idx) => {
+                                      const time = entry.times[idx] || calculateLegTime(
+                                        entry.athletes[idx],
+                                        idx,
+                                        stroke,
+                                        eventName,
+                                        entry.useRelaySplits[idx],
+                                        entry.times[idx],
+                                        event.distances[idx]
+                                      );
+                                      return time ? parseTimeToSeconds(time) : 0;
+                                    });
+                                    const total = times.reduce((sum, t) => sum + t, 0);
+                                    return total > 0 ? formatSecondsToTime(total) : "—";
+                                  })()}
+                                </span>
+                                <span className="w-7" aria-hidden />
+                              </div>
+                            </TableCell>
+                            {event.legs.some((_, i) => i > 0) && <TableCell className="w-[7.25rem] pl-4 pr-4 py-2" />}
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
                   </div>
-                )}
-              </TabsContent>
-            );
-          })}
-        </Tabs>
+                </>
+              );
+            })()}
+          </div>
+
+          {/* Right: Swimmers in relays - matrix of swimmer × relay with split times */}
+          <div className="rounded-md border bg-slate-50/50 min-w-0">
+            <div className="px-3 py-2 border-b bg-white">
+              <h4 className="text-sm font-semibold text-slate-800">Swimmers in relays</h4>
+              <p className="text-xs text-slate-500">Split time per relay in team colors</p>
+            </div>
+            {Object.keys(athleteRelayAssignments).length === 0 ? (
+              <div className="p-4 text-center text-sm text-slate-500">
+                Add swimmers to relays to see the matrix here.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table className="w-full" style={{ minWidth: "max-content" }}>
+                  <TableHeader>
+                    <TableRow className="bg-slate-100/80">
+                      <TableHead className="min-w-[6rem] px-4 py-2 text-xs font-medium whitespace-nowrap">Name</TableHead>
+                      <TableHead className="min-w-[2.5rem] px-3 py-2 text-xs font-medium">Year</TableHead>
+                      {relayEvents.map((evt) => (
+                        <TableHead key={evt.id} className="min-w-[8rem] px-4 py-2 text-xs font-medium whitespace-nowrap text-center">
+                          {evt.name}
+                        </TableHead>
+                      ))}
+                      <TableHead className="min-w-[5.5rem] px-3 py-2 text-xs font-medium text-right whitespace-nowrap">Relay Count</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {Object.entries(athleteRelayAssignments)
+                      .sort(([, a], [, b]) => b.count - a.count || 0)
+                      .map(([athleteId, assignment]) => {
+                        const athlete = team.athletes.find((a) => a.id === athleteId);
+                        if (!athlete) return null;
+                        const isAtLimit = assignment.count >= maxRelays;
+                        const isNearLimit = assignment.count >= maxRelays - 1;
+                        const teamColorStyle = team.primaryColor ? { color: team.primaryColor, fontWeight: 700 } : { fontWeight: 700 };
+
+                        return (
+                          <TableRow
+                            key={athleteId}
+                            className={isAtLimit ? "bg-red-50/80" : isNearLimit ? "bg-amber-50/80" : ""}
+                          >
+                            <TableCell className="min-w-[6rem] px-4 py-2 font-medium text-sm whitespace-nowrap">
+                              {formatName(athlete.firstName, athlete.lastName)}
+                            </TableCell>
+                            <TableCell className="min-w-[2.5rem] px-3 py-2 text-xs text-slate-600">
+                              {athlete.year || "—"}
+                            </TableCell>
+                            {relayEvents.map((evt) => {
+                              const eventName = evt.name || evt.id;
+                              const entry = relayEntries[eventName];
+                              if (!entry) return <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle">—</TableCell>;
+                              const legIndex = entry.athletes.findIndex((id) => id === athleteId);
+                              if (legIndex === -1) {
+                                return <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle text-slate-300">—</TableCell>;
+                              }
+                              const stroke = evt.legs[legIndex];
+                              const distance = evt.distances[legIndex];
+                              const time = entry.times[legIndex] || calculateLegTime(
+                                athleteId,
+                                legIndex,
+                                stroke,
+                                eventName,
+                                entry.useRelaySplits[legIndex],
+                                entry.times[legIndex],
+                                distance
+                              );
+                              return (
+                                <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle">
+                                  <span className="font-mono text-sm" style={teamColorStyle}>
+                                    {time ? normalizeTimeFormat(time) : "—"}
+                                  </span>
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell className="min-w-[5.5rem] px-3 py-2 text-right">
+                              <Badge
+                                variant={isAtLimit ? "destructive" : isNearLimit ? "default" : "secondary"}
+                                className="text-xs"
+                              >
+                                {assignment.count}/{maxRelays}
+                              </Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    {/* Total row: aggregate time per relay */}
+                    <TableRow className="bg-slate-100/80 border-t-2 border-slate-200">
+                      <TableCell className="min-w-[6rem] px-4 py-2 font-medium text-slate-700">
+                        Total
+                      </TableCell>
+                      <TableCell className="min-w-[2.5rem] px-3 py-2" />
+                      {relayEvents.map((evt) => {
+                        const eventName = evt.name || evt.id;
+                        const entry = relayEntries[eventName];
+                        if (!entry || !entry.athletes.every((a) => a !== null)) {
+                          return <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle text-slate-400">—</TableCell>;
+                        }
+                        const times = evt.legs.map((stroke, idx) => {
+                          const time = entry.times[idx] || calculateLegTime(
+                            entry.athletes[idx],
+                            idx,
+                            stroke,
+                            eventName,
+                            entry.useRelaySplits[idx],
+                            entry.times[idx],
+                            evt.distances[idx]
+                          );
+                          return time ? parseTimeToSeconds(time) : 0;
+                        });
+                        const totalSeconds = times.reduce((sum, t) => sum + t, 0);
+                        const totalFormatted = totalSeconds > 0 ? formatSecondsToTime(totalSeconds) : "—";
+                        return (
+                          <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle">
+                            <span className="font-mono text-sm font-bold text-slate-800">
+                              {totalFormatted}
+                            </span>
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="min-w-[5.5rem] px-3 py-2" />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

@@ -87,6 +87,21 @@ export function formatTeamName(name: string, schoolName?: string | null): string
   return schoolName || name;
 }
 
+// Short label for relay column (e.g. "PRIN", "PRIN-A"). Uses team shortName if present (e.g. "PRIN-M" -> "PRIN"), else derives from first word of school/team name.
+export function formatTeamRelayLabel(team: {
+  name: string;
+  schoolName?: string | null;
+  shortName?: string | null;
+}): string {
+  if (team.shortName && team.shortName.trim()) {
+    const base = team.shortName.trim().split("-")[0];
+    if (base) return base.toUpperCase();
+  }
+  const full = (team.schoolName || team.name).trim();
+  const firstWord = full.split(/\s+/)[0] || full;
+  return firstWord.slice(0, 4).toUpperCase();
+}
+
 // Normalize event name to standard format
 // Handles variations like "500 FR" -> "500 Free", "200 BK" -> "200 Back", etc.
 export function normalizeEventName(eventName: string): string {

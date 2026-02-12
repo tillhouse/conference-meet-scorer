@@ -74,6 +74,7 @@ export default async function EventDetailPage({
               id: true,
               name: true,
               schoolName: true,
+              shortName: true,
               primaryColor: true,
             },
           },
@@ -133,6 +134,19 @@ export default async function EventDetailPage({
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
 
+  // For relay events, build athlete id -> name map from all meet lineups (so we can show split names)
+  let athleteIdToName: Record<string, string> = {};
+  if (event.eventType === "relay") {
+    const { formatName } = await import("@/lib/utils");
+    const allLineups = await prisma.meetLineup.findMany({
+      where: { meetId: id },
+      include: { athlete: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    allLineups.forEach((l) => {
+      athleteIdToName[l.athlete.id] = formatName(l.athlete.firstName, l.athlete.lastName);
+    });
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -171,6 +185,7 @@ export default async function EventDetailPage({
         meetLineups={meet.meetLineups}
         relayEntries={meet.relayEntries}
         teams={meet.meetTeams.map((mt) => mt.team)}
+        athleteIdToName={athleteIdToName}
         individualScoring={individualScoring}
         relayScoring={relayScoring}
         scoringPlaces={meet.scoringPlaces}

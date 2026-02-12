@@ -21,9 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatName, formatTeamName, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
+import { formatName, formatTeamName, formatTeamRelayLabel, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Edit2, Save, X } from "lucide-react";
+import { Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 interface MeetLineup {
@@ -66,9 +66,12 @@ interface RelayEntry {
   place: number | null;
   points: number | null;
   members: string | null;
+  legTimes: string | null; // JSON array of leg times e.g. ["19.95", "20.10", null, "19.88"]
   team: {
     id: string;
     name: string;
+    schoolName?: string | null;
+    shortName?: string | null;
     primaryColor: string | null;
   };
   event: {
@@ -82,6 +85,7 @@ interface Team {
   id: string;
   name: string;
   schoolName?: string | null;
+  shortName?: string | null;
   primaryColor: string | null;
 }
 
@@ -96,6 +100,8 @@ interface EventDetailViewProps {
   meetLineups: MeetLineup[];
   relayEntries: RelayEntry[];
   teams: Team[];
+  /** Map athlete id -> display name for relay split labels (optional) */
+  athleteIdToName?: Record<string, string>;
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
   scoringPlaces: number;
@@ -121,6 +127,8 @@ interface TeamEventStats {
         time: string | null;
         teamName?: string;
         teamColor?: string | null;
+        /** Relay shorthand for Relay column (e.g. "PRIN") */
+        teamRelayLabel?: string;
         lineupId?: string;
         hasOverride?: boolean;
       }>;
@@ -133,6 +141,7 @@ export function EventDetailView({
   meetLineups,
   relayEntries,
   teams,
+  athleteIdToName = {},
   individualScoring,
   relayScoring,
   scoringPlaces,
@@ -143,6 +152,7 @@ export function EventDetailView({
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingTimes, setEditingTimes] = useState<Map<string, string>>(new Map());
   const [saving, setSaving] = useState(false);
+  const [expandedRelayId, setExpandedRelayId] = useState<string | null>(null);
 
   // Calculate A/B/C final ranges
   const aFinalRange = { min: 1, max: Math.min(8, scoringPlaces) };
@@ -302,6 +312,7 @@ export function EventDetailView({
         time: getEffectiveTime(relay),
         teamName: stats.teamName,
         teamColor: stats.teamColor,
+        teamRelayLabel: formatTeamRelayLabel(relay.team),
         lineupId: relay.id,
         hasOverride: !!('overrideTime' in relay && relay.overrideTime),
       });
@@ -418,6 +429,29 @@ export function EventDetailView({
     }
   }, [meetId, router]);
 
+  // Parse relay members and leg times for split display
+  const getRelaySplits = useCallback(
+    (relay: RelayEntry): { name: string; time: string | null }[] => {
+      let memberIds: string[] = [];
+      try {
+        if (relay.members) memberIds = JSON.parse(relay.members) as string[];
+      } catch {
+        /* ignore */
+      }
+      let times: (string | null)[] = [];
+      try {
+        if (relay.legTimes) times = JSON.parse(relay.legTimes) as (string | null)[];
+      } catch {
+        /* ignore */
+      }
+      return memberIds.map((id, i) => ({
+        name: athleteIdToName[id] || `Leg ${i + 1}`,
+        time: times[i] ?? null,
+      }));
+    },
+    [athleteIdToName]
+  );
+
   // Helper to render time cell (editable in edit mode)
   const renderTimeCell = useCallback((entry: { lineupId?: string; time: string | null; hasOverride?: boolean }) => {
     if (!isEditMode || !entry.lineupId) {
@@ -504,14 +538,21 @@ export function EventDetailView({
                 </div>
               ) : (
                 <div className="rounded-md border overflow-hidden">
-                  <Table>
+                  <Table className="table-fixed w-full">
+                    <colgroup>
+                      <col className="w-[4.5rem]" />
+                      <col className="min-w-0" />
+                      <col className="min-w-0" />
+                      <col className="w-[5.5rem]" />
+                      <col className="w-[3.5rem]" />
+                    </colgroup>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Place</TableHead>
-                        <TableHead>Athlete/Team</TableHead>
+                        <TableHead className="w-[4.5rem] pr-4">Place</TableHead>
+                        <TableHead className="pl-2">{event.eventType === "relay" ? "Relay" : "Athlete"}</TableHead>
                         <TableHead>Team</TableHead>
-                        <TableHead className="text-right">Time/Score</TableHead>
-                        <TableHead className="text-right">Points</TableHead>
+                        <TableHead className="w-[5.5rem] text-right pr-4">{event.eventType === "diving" ? "Score" : "Time"}</TableHead>
+                        <TableHead className="w-[3.5rem] text-right pl-4">Points</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -543,39 +584,85 @@ export function EventDetailView({
                                     A Final (Places {aFinalRange.min}-{aFinalRange.max})
                                   </TableCell>
                                 </TableRow>
-                                {aFinalEntries.map((entry, idx) => (
-                                  <TableRow 
-                                    key={`a-${entry.athleteId}-${idx}`}
-                                    className={idx % 2 === 0 ? "bg-slate-50" : "bg-white"}
-                                  >
-                                    <TableCell className="font-bold">
-                                      <span className="flex items-center gap-2">
-                                        {entry.place}
-                                        {entry.place === 1 && "🥇"}
-                                        {entry.place === 2 && "🥈"}
-                                        {entry.place === 3 && "🥉"}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="font-medium">{entry.athleteName}</TableCell>
-                                    <TableCell>
-                                      <span
-                                        style={
-                                          entry.teamColor
-                                            ? { color: entry.teamColor, fontWeight: 600 }
-                                            : {}
+                                {aFinalEntries.map((entry, idx) => {
+                                  const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
+                                  const splits = relay ? getRelaySplits(relay) : [];
+                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  return (
+                                    <>
+                                      <TableRow
+                                        key={`a-${entry.athleteId}-${idx}`}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={
+                                          event.eventType === "relay"
+                                            ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null))
+                                            : undefined
+                                        }
+                                        role={event.eventType === "relay" ? "button" : undefined}
+                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
+                                        onKeyDown={
+                                          event.eventType === "relay"
+                                            ? (e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null));
+                                                }
+                                              }
+                                            : undefined
                                         }
                                       >
-                                        {entry.teamName}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      {renderTimeCell(entry)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-semibold text-green-600">
-                                      {entry.points > 0 ? entry.points.toFixed(1) : "-"}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                          <span className="flex items-center gap-2">
+                                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                            </span>
+                                            {entry.place}
+                                            {entry.place === 1 && " 🥇"}
+                                            {entry.place === 2 && " 🥈"}
+                                            {entry.place === 3 && " 🥉"}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="font-medium pl-2">
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                        </TableCell>
+                                        <TableCell>
+                                          <span
+                                            style={
+                                              entry.teamColor
+                                                ? { color: entry.teamColor, fontWeight: 600 }
+                                                : {}
+                                            }
+                                          >
+                                            {entry.teamName}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="w-[5.5rem] text-right pr-4">
+                                          {renderTimeCell(entry)}
+                                        </TableCell>
+                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">
+                                          {entry.points > 0 ? entry.points.toFixed(1) : "-"}
+                                        </TableCell>
+                                      </TableRow>
+                                      {event.eventType === "relay" && isExpanded && splits.length > 0 &&
+                                        splits.map((split, i) => (
+                                          <TableRow
+                                            key={`a-${entry.athleteId}-${idx}-split-${i}`}
+                                            className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}
+                                          >
+                                            <TableCell className="w-[4.5rem] pr-4" />
+                                            <TableCell className="pl-2 text-sm italic text-slate-500 py-1.5">
+                                              {split.name}
+                                            </TableCell>
+                                            <TableCell />
+                                            <TableCell className="w-[5.5rem] text-right pr-4 text-sm italic font-mono text-slate-500 tabular-nums py-1.5">
+                                              {split.time ? normalizeTimeFormat(split.time) : "—"}
+                                            </TableCell>
+                                            <TableCell className="w-[3.5rem] pl-4" />
+                                          </TableRow>
+                                        ))}
+                                    </>
+                                  );
+                                })}
                               </>
                             )}
 
@@ -587,32 +674,49 @@ export function EventDetailView({
                                     B Final (Places {bFinalRange.min}-{bFinalRange.max})
                                   </TableCell>
                                 </TableRow>
-                                {bFinalEntries.map((entry, idx) => (
-                                  <TableRow 
-                                    key={`b-${entry.athleteId}-${idx}`}
-                                    className={idx % 2 === 0 ? "bg-slate-50" : "bg-white"}
-                                  >
-                                    <TableCell className="font-bold">{entry.place}</TableCell>
-                                    <TableCell className="font-medium">{entry.athleteName}</TableCell>
-                                    <TableCell>
-                                      <span
-                                        style={
-                                          entry.teamColor
-                                            ? { color: entry.teamColor, fontWeight: 600 }
-                                            : {}
-                                        }
+                                {bFinalEntries.map((entry, idx) => {
+                                  const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
+                                  const splits = relay ? getRelaySplits(relay) : [];
+                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  return (
+                                    <>
+                                      <TableRow
+                                        key={`b-${entry.athleteId}-${idx}`}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
+                                        role={event.eventType === "relay" ? "button" : undefined}
+                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
+                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
                                       >
-                                        {entry.teamName}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      {renderTimeCell(entry)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-semibold text-green-600">
-                                      {entry.points > 0 ? entry.points.toFixed(1) : "-"}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                          <span className="flex items-center gap-2">
+                                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                            </span>
+                                            {entry.place}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="font-medium pl-2">
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                        </TableCell>
+                                        <TableCell>
+                                          <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
+                                        </TableCell>
+                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
+                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                      </TableRow>
+                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                        <TableRow key={`b-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
+                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
+                                          <TableCell />
+                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[3.5rem]" />
+                                        </TableRow>
+                                      ))}
+                                    </>
+                                  );
+                                })}
                               </>
                             )}
 
@@ -624,32 +728,49 @@ export function EventDetailView({
                                     C Final (Places {cFinalRange.min}-{cFinalRange.max})
                                   </TableCell>
                                 </TableRow>
-                                {cFinalEntries.map((entry, idx) => (
-                                  <TableRow 
-                                    key={`c-${entry.athleteId}-${idx}`}
-                                    className={idx % 2 === 0 ? "bg-slate-50" : "bg-white"}
-                                  >
-                                    <TableCell className="font-bold">{entry.place}</TableCell>
-                                    <TableCell className="font-medium">{entry.athleteName}</TableCell>
-                                    <TableCell>
-                                      <span
-                                        style={
-                                          entry.teamColor
-                                            ? { color: entry.teamColor, fontWeight: 600 }
-                                            : {}
-                                        }
+                                {cFinalEntries.map((entry, idx) => {
+                                  const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
+                                  const splits = relay ? getRelaySplits(relay) : [];
+                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  return (
+                                    <>
+                                      <TableRow
+                                        key={`c-${entry.athleteId}-${idx}`}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
+                                        role={event.eventType === "relay" ? "button" : undefined}
+                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
+                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
                                       >
-                                        {entry.teamName}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      {renderTimeCell(entry)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-semibold text-green-600">
-                                      {entry.points > 0 ? entry.points.toFixed(1) : "-"}
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                          <span className="flex items-center gap-2">
+                                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                            </span>
+                                            {entry.place}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="font-medium pl-2">
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                        </TableCell>
+                                        <TableCell>
+                                          <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
+                                        </TableCell>
+                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
+                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                      </TableRow>
+                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                        <TableRow key={`c-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
+                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
+                                          <TableCell />
+                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[3.5rem]" />
+                                        </TableRow>
+                                      ))}
+                                    </>
+                                  );
+                                })}
                               </>
                             )}
 
@@ -661,34 +782,49 @@ export function EventDetailView({
                                     Non-Scorers (Places {cFinalRange.max + 1}+)
                                   </TableCell>
                                 </TableRow>
-                                {nonScorerEntries.map((entry, idx) => (
-                                  <TableRow 
-                                    key={`nonscorer-${entry.athleteId}-${idx}`}
-                                    className={idx % 2 === 0 ? "bg-slate-50" : "bg-white"}
-                                  >
-                                    <TableCell className="font-bold">
-                                      {entry.place || "-"}
-                                    </TableCell>
-                                    <TableCell className="font-medium">{entry.athleteName}</TableCell>
-                                    <TableCell>
-                                      <span
-                                        style={
-                                          entry.teamColor
-                                            ? { color: entry.teamColor, fontWeight: 600 }
-                                            : {}
-                                        }
+                                {nonScorerEntries.map((entry, idx) => {
+                                  const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
+                                  const splits = relay ? getRelaySplits(relay) : [];
+                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  return (
+                                    <>
+                                      <TableRow
+                                        key={`nonscorer-${entry.athleteId}-${idx}`}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
+                                        role={event.eventType === "relay" ? "button" : undefined}
+                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
+                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
                                       >
-                                        {entry.teamName}
-                                      </span>
-                                    </TableCell>
-                                    <TableCell className="text-right">
-                                      {renderTimeCell(entry)}
-                                    </TableCell>
-                                    <TableCell className="text-right font-semibold text-slate-400">
-                                      -
-                                    </TableCell>
-                                  </TableRow>
-                                ))}
+                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                          <span className="flex items-center gap-2">
+                                            <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                            </span>
+                                            {entry.place || "-"}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="font-medium pl-2">
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                        </TableCell>
+                                        <TableCell>
+                                          <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
+                                        </TableCell>
+                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
+                                        <TableCell className="w-[3.5rem] text-right font-semibold text-slate-400 pl-4">-</TableCell>
+                                      </TableRow>
+                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                        <TableRow key={`nonscorer-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
+                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
+                                          <TableCell />
+                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[3.5rem]" />
+                                        </TableRow>
+                                      ))}
+                                    </>
+                                  );
+                                })}
                               </>
                             )}
                           </>
