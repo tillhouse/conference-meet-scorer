@@ -101,6 +101,11 @@ export default async function MeetDetailPage({
     ? (JSON.parse(meet.relayScoring) as Record<string, number>)
     : {};
 
+  const eventDays = meet.eventDays
+    ? (JSON.parse(meet.eventDays) as Record<string, number>)
+    : null;
+  const durationDays = meet.durationDays ?? 1;
+
   // Check if meet has been simulated (has places/points assigned)
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
@@ -132,7 +137,8 @@ export default async function MeetDetailPage({
             </Badge>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <SimulateMeetButton meetId={id} hasResults={hasResults} />
           <Button variant="outline" asChild>
             <Link href="/meets">
               Back to Meets
@@ -144,11 +150,13 @@ export default async function MeetDetailPage({
       {/* Navigation */}
       <MeetNavigation meetId={id} status={meet.status} />
 
-      {/* Team Standings - Prominently displayed */}
+      {/* Team Standings - View only; meet actions live in header */}
       <TeamStandings 
         meetTeams={meet.meetTeams} 
         meetLineups={meet.meetLineups}
-        simulateButton={<SimulateMeetButton meetId={id} hasResults={hasResults} />}
+        relayEntries={meet.relayEntries}
+        durationDays={durationDays}
+        eventDays={eventDays}
       />
 
       {/* Score Progression Graph - Only show if meet has been simulated */}

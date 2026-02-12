@@ -25,6 +25,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
   date: z.string().optional(),
   location: z.string().optional(),
+  durationDays: z.number().min(1).max(5),
   meetType: z.enum(["championship", "dual"]),
   
   // Roster configuration
@@ -72,6 +73,7 @@ interface Meet {
   name: string;
   date: string | null;
   location: string | null;
+  durationDays: number;
   meetType: string;
   maxAthletes: number;
   diverRatio: number;
@@ -83,6 +85,7 @@ interface Meet {
   scoringStartPoints: number;
   relayMultiplier: number;
   selectedEvents: string | null;
+  eventDays: string | null;
   meetTeams: MeetTeam[];
 }
 
@@ -134,6 +137,7 @@ export default function EditMeetPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [meet, setMeet] = useState<Meet | null>(null);
   const [eventOrder, setEventOrder] = useState<string[]>([]);
+  const [eventDays, setEventDays] = useState<Record<string, number>>({});
 
   const {
     register,
@@ -148,6 +152,7 @@ export default function EditMeetPage() {
       name: "",
       date: "",
       location: "",
+      durationDays: 1,
       meetType: "championship",
       maxAthletes: 18,
       diverRatio: 0.333,
@@ -306,6 +311,14 @@ export default function EditMeetPage() {
         
         setEventOrder(ordered);
 
+        // Load event day assignment
+        try {
+          const parsed = meetData.eventDays ? (JSON.parse(meetData.eventDays) as Record<string, number>) : {};
+          setEventDays(typeof parsed === "object" && parsed !== null ? parsed : {});
+        } catch {
+          setEventDays({});
+        }
+
         // Format date for input (YYYY-MM-DD)
         const dateValue = meetData.date
           ? new Date(meetData.date).toISOString().split("T")[0]
@@ -316,6 +329,7 @@ export default function EditMeetPage() {
           name: meetData.name,
           date: dateValue,
           location: meetData.location || "",
+          durationDays: meetData.durationDays ?? 1,
           meetType: meetData.meetType as "championship" | "dual",
           maxAthletes: meetData.maxAthletes,
           diverRatio: meetData.diverRatio,
@@ -472,8 +486,15 @@ export default function EditMeetPage() {
           ordered.push(id);
         }
       }
-      
       return ordered;
+    });
+    // Default new events to day 1
+    setEventDays((prev) => {
+      const next = { ...prev };
+      newEvents.forEach((e) => {
+        if (next[e.id] == null) next[e.id] = 1;
+      });
+      return next;
     });
   }, [setValue]);
 
@@ -559,6 +580,7 @@ export default function EditMeetPage() {
           name: data.name,
           date: data.date ? new Date(data.date).toISOString() : null,
           location: data.location || null,
+          durationDays: data.durationDays,
           meetType: data.meetType,
           maxAthletes: data.maxAthletes,
           diverRatio: data.diverRatio,
@@ -574,6 +596,7 @@ export default function EditMeetPage() {
           teamIds: data.teamIds,
           eventIds: eventIdsToSave,
           eventOrder: eventOrderToSave ? JSON.stringify(eventOrderToSave) : null,
+          eventDays: Object.keys(eventDays).length > 0 ? JSON.stringify(eventDays) : null,
         }),
       });
 
@@ -656,6 +679,26 @@ export default function EditMeetPage() {
                   placeholder="Blodgett Pool, Cambridge, MA"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="durationDays">Duration (days)</Label>
+              <Select
+                value={(watch("durationDays") ?? 1).toString()}
+                onValueChange={(value) => setValue("durationDays", parseInt(value, 10))}
+              >
+                <SelectTrigger id="durationDays">
+                  <SelectValue placeholder="Number of days" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((d) => (
+                    <SelectItem key={d} value={d.toString()}>
+                      {d} {d === 1 ? "day" : "days"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Length of the meet (1–5 days)</p>
             </div>
 
             <div className="space-y-2">
@@ -870,6 +913,9 @@ export default function EditMeetPage() {
           configuredEvents={configuredEvents}
           onEventsChange={handleEventsChange}
           onOrderChange={handleOrderChange}
+          durationDays={watch("durationDays") ?? 1}
+          eventDays={eventDays}
+          onEventDaysChange={setEventDays}
           divingIncluded={divingIncluded}
           onDivingIncludedChange={handleDivingIncludedChange}
         />

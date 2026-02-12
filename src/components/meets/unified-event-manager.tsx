@@ -39,6 +39,11 @@ interface UnifiedEventManagerProps {
   configuredEvents: Event[];
   onEventsChange: (events: Event[]) => void;
   onOrderChange: (orderedIds: string[]) => void;
+  /** Number of meet days (1-5). When > 1, shows day selector per event. */
+  durationDays?: number;
+  /** Map eventId -> day (1-based). Used when durationDays > 1. */
+  eventDays?: Record<string, number>;
+  onEventDaysChange?: (eventDays: Record<string, number>) => void;
   divingIncluded: boolean;
   onDivingIncludedChange?: (included: boolean) => void;
 }
@@ -47,6 +52,9 @@ function SortableEventItem({
   event,
   index,
   totalEvents,
+  day,
+  durationDays,
+  onDayChange,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -54,6 +62,9 @@ function SortableEventItem({
   event: Event;
   index: number;
   totalEvents: number;
+  day?: number;
+  durationDays?: number;
+  onDayChange?: (eventId: string, day: number) => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
@@ -108,6 +119,23 @@ function SortableEventItem({
       <Badge className={getEventTypeColor(event.eventType)}>
         {event.eventType}
       </Badge>
+      {durationDays != null && durationDays >= 1 && onDayChange && (
+        <Select
+          value={(day ?? 1).toString()}
+          onValueChange={(value) => onDayChange(event.id, parseInt(value, 10))}
+        >
+          <SelectTrigger className="w-[100px] h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: durationDays }, (_, i) => i + 1).map((d) => (
+              <SelectItem key={d} value={d.toString()}>
+                Day {d}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
@@ -145,6 +173,9 @@ export function UnifiedEventManager({
   configuredEvents,
   onEventsChange,
   onOrderChange,
+  durationDays = 1,
+  eventDays = {},
+  onEventDaysChange,
   divingIncluded,
   onDivingIncludedChange,
 }: UnifiedEventManagerProps) {
@@ -394,6 +425,11 @@ export function UnifiedEventManager({
                         event={event}
                         index={index}
                         totalEvents={orderedEvents.length}
+                        day={eventDays[event.id] ?? 1}
+                        durationDays={durationDays}
+                        onDayChange={onEventDaysChange ? (eventId, day) => {
+                          onEventDaysChange({ ...eventDays, [eventId]: day });
+                        } : undefined}
                         onMoveUp={() => handleMoveUp(index)}
                         onMoveDown={() => handleMoveDown(index)}
                         onDelete={() => handleDelete(event.id)}

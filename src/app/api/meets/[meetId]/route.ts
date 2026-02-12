@@ -6,6 +6,7 @@ const updateMeetSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
   date: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
+  durationDays: z.number().min(1).max(5).optional(),
   meetType: z.enum(["championship", "dual"]),
   maxAthletes: z.number().min(1),
   diverRatio: z.number().min(0).max(1),
@@ -21,6 +22,7 @@ const updateMeetSchema = z.object({
   teamIds: z.array(z.string()).min(1),
   eventIds: z.array(z.string()).min(1),
   eventOrder: z.string().nullable().optional(),
+  eventDays: z.string().nullable().optional(),
 });
 
 export async function GET(
@@ -177,6 +179,7 @@ export async function PUT(
         name: data.name,
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
         location: data.location && data.location.trim() !== "" ? data.location : null,
+        ...(data.durationDays !== undefined && { durationDays: data.durationDays }),
         meetType: data.meetType,
         maxAthletes: data.maxAthletes,
         diverRatio: data.diverRatio,
@@ -192,6 +195,7 @@ export async function PUT(
         relayScoring: data.relayScoring,
         selectedEvents: JSON.stringify(finalEventIds),
         eventOrder: finalEventOrder ? JSON.stringify(finalEventOrder) : null,
+        ...(data.eventDays !== undefined && { eventDays: data.eventDays && data.eventDays.trim() !== "" ? data.eventDays : null }),
       },
     });
 

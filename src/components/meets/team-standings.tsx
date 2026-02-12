@@ -3,7 +3,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { BarChart3, List, ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatTeamName } from "@/lib/utils";
 
 interface Team {
@@ -40,10 +41,20 @@ interface MeetTeam {
   team: Team;
 }
 
+interface RelayEntry {
+  id: string;
+  teamId: string;
+  eventId: string;
+  points: number | null;
+  team: Team;
+}
+
 interface TeamStandingsProps {
   meetTeams: MeetTeam[];
   meetLineups: MeetLineup[];
-  simulateButton?: React.ReactNode;
+  relayEntries?: RelayEntry[];
+  durationDays?: number;
+  eventDays?: Record<string, number> | null;
 }
 
 type SortColumn = 
@@ -60,16 +71,91 @@ type SortColumn =
 
 type SortDirection = "asc" | "desc";
 
-export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamStandingsProps) {
-  const [showAdvancedStats, setShowAdvancedStats] = useState(false);
+type ViewMode = "standard" | "advanced" | "dailyGrid";
+type DailyGridSubView = "subScore" | "cumulative";
+
+export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null }: TeamStandingsProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [sortColumn, setSortColumn] = useState<SortColumn>("total");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [dailyGridSubView, setDailyGridSubView] = useState<DailyGridSubView>("subScore");
 
   // Reset sort to total when switching views
   useEffect(() => {
     setSortColumn("total");
     setSortDirection("desc");
-  }, [showAdvancedStats]);
+  }, [viewMode]);
+
+  // All event IDs that have entries in this meet (from lineups + relays)
+  const allEventIdsInMeet = useMemo(
+    () => new Set([...meetLineups.map((l) => l.eventId), ...relayEntries.map((r) => r.eventId)]),
+    [meetLineups, relayEntries]
+  );
+
+  // Per-team, per-day total points (day index 0 = Day 1, etc.). Events not in eventDays default to Day 1.
+  const pointsByTeamByDay = useMemo(() => {
+    const days = durationDays < 1 ? 1 : durationDays;
+    const map = new Map<string, number[]>();
+    meetTeams.forEach((mt) => map.set(mt.teamId, Array.from({ length: days }, () => 0)));
+
+    const eventToDay = (eid: string) => Number(eventDays?.[eid] ?? 1) - 1; // 0-based index
+
+    meetLineups.forEach((lineup) => {
+      const teamId = lineup.athlete.team.id;
+      const arr = map.get(teamId);
+      if (!arr) return;
+      const d = eventToDay(lineup.eventId);
+      if (d >= 0 && d < arr.length) arr[d] += lineup.points ?? 0;
+    });
+    relayEntries.forEach((entry) => {
+      const arr = map.get(entry.teamId);
+      if (!arr) return;
+      const d = eventToDay(entry.eventId);
+      if (d >= 0 && d < arr.length) arr[d] += entry.points ?? 0;
+    });
+
+    return map;
+  }, [meetTeams, meetLineups, relayEntries, durationDays, eventDays]);
+
+  // When filtering by day: compute standings from lineups/relays for events on that day only.
+  // Events not in eventDays default to Day 1 (same as edit UI).
+  const displayTeams = useMemo(() => {
+    if (selectedDay == null || durationDays < 2) {
+      return meetTeams;
+    }
+    const day = selectedDay;
+    const eventIdSet = new Set<string>();
+    allEventIdsInMeet.forEach((eid) => {
+      const assignedDay = Number(eventDays?.[eid] ?? 1);
+      if (assignedDay === day) eventIdSet.add(eid);
+    });
+
+    return meetTeams.map((mt) => {
+      let individualScore = 0;
+      let divingScore = 0;
+      let relayScore = 0;
+      meetLineups.forEach((lineup) => {
+        if (!eventIdSet.has(lineup.eventId)) return;
+        if (lineup.athlete.team.id !== mt.teamId) return;
+        const pts = lineup.points ?? 0;
+        if (lineup.event.eventType === "diving") divingScore += pts;
+        else if (lineup.event.eventType === "individual") individualScore += pts;
+      });
+      relayEntries.forEach((entry) => {
+        if (!eventIdSet.has(entry.eventId) || entry.teamId !== mt.teamId) return;
+        relayScore += entry.points ?? 0;
+      });
+      const totalScore = individualScore + divingScore + relayScore;
+      return {
+        ...mt,
+        individualScore,
+        divingScore,
+        relayScore,
+        totalScore,
+      };
+    });
+  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, allEventIdsInMeet]);
 
   // Handle column sorting
   const handleSort = (column: SortColumn) => {
@@ -83,7 +169,17 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
     }
   };
 
-  // Calculate advanced stats for each team
+  // Event IDs on selected day (for filtering lineups in advanced stats). Events not in eventDays default to Day 1.
+  const eventIdsOnSelectedDay = useMemo(() => {
+    if (selectedDay == null) return null;
+    const set = new Set<string>();
+    allEventIdsInMeet.forEach((eid) => {
+      if (Number(eventDays?.[eid] ?? 1) === selectedDay) set.add(eid);
+    });
+    return set;
+  }, [selectedDay, eventDays, allEventIdsInMeet]);
+
+  // Calculate advanced stats for each team (filter by selected day when set)
   const teamStats = useMemo(() => {
     const statsMap = new Map<string, {
       swimmers: Set<string>;
@@ -94,7 +190,6 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
       divingPoints: number;
     }>();
 
-    // Initialize all teams
     meetTeams.forEach((meetTeam) => {
       statsMap.set(meetTeam.teamId, {
         swimmers: new Set(),
@@ -106,8 +201,8 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
       });
     });
 
-    // Process lineups
     meetLineups.forEach((lineup) => {
+      if (eventIdsOnSelectedDay != null && !eventIdsOnSelectedDay.has(lineup.eventId)) return;
       const teamId = lineup.athlete.team.id;
       const stats = statsMap.get(teamId);
       if (!stats) return;
@@ -126,11 +221,11 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
     });
 
     return statsMap;
-  }, [meetTeams, meetLineups]);
+  }, [meetTeams, meetLineups, eventIdsOnSelectedDay]);
 
-  // Sort teams based on selected column and direction
+  // Sort teams based on selected column and direction (use displayTeams so day filter applies)
   const sortedTeams = useMemo(() => {
-    const teams = [...meetTeams];
+    const teams = [...displayTeams];
     
     return teams.sort((a, b) => {
       let aValue: number | string;
@@ -190,7 +285,7 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
           : (bValue as number) - (aValue as number);
       }
     });
-  }, [meetTeams, sortColumn, sortDirection, teamStats]);
+  }, [displayTeams, sortColumn, sortDirection, teamStats]);
 
   // Helper to render sortable header
   const renderSortableHeader = (
@@ -247,35 +342,131 @@ export function TeamStandings({ meetTeams, meetLineups, simulateButton }: TeamSt
           <div>
             <CardTitle className="text-xl">Team Standings</CardTitle>
             <CardDescription className="text-sm">
-              {showAdvancedStats 
+              {viewMode === "advanced"
                 ? "Advanced statistics for all participating teams"
-                : "Current standings for all participating teams"}
+                : viewMode === "dailyGrid"
+                  ? dailyGridSubView === "cumulative"
+                    ? "Cumulative points through each day"
+                    : "Points scored each day"
+                  : selectedDay != null
+                    ? `Points scored on Day ${selectedDay} only`
+                    : "Current standings for all participating teams"}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            {simulateButton}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowAdvancedStats(!showAdvancedStats)}
+          <div className="flex items-center gap-2 flex-wrap">
+            {durationDays > 1 && (
+              <Select
+                key="day-filter"
+                value={selectedDay == null ? "all" : String(selectedDay)}
+                onValueChange={(v) => setSelectedDay(v === "all" ? null : parseInt(v, 10))}
+              >
+                <SelectTrigger className="w-[120px]" size="sm">
+                  <SelectValue placeholder="Filter by day" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" key="all">All days</SelectItem>
+                  {Array.from({ length: durationDays }, (_, i) => i + 1).map((d) => (
+                    <SelectItem key={d} value={String(d)}>Day {d}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Select
+              value={viewMode}
+              onValueChange={(v) => setViewMode(v as ViewMode)}
             >
-              {showAdvancedStats ? (
-                <>
-                  <List className="h-4 w-4 mr-2" />
-                  Standard View
-                </>
-              ) : (
-                <>
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Advanced Stats
-                </>
-              )}
-            </Button>
+              <SelectTrigger className="w-[160px]" size="sm">
+                <SelectValue placeholder="View" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="standard" key="standard">Standard View</SelectItem>
+                <SelectItem value="advanced" key="advanced">Advanced Stats</SelectItem>
+                {durationDays > 1 && (
+                  <SelectItem value="dailyGrid" key="dailyGrid">Daily Grid</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        {!showAdvancedStats ? (
+        {viewMode === "dailyGrid" ? (
+          // Daily Grid View
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-600">Show:</span>
+              <Button
+                variant={dailyGridSubView === "subScore" ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setDailyGridSubView("subScore")}
+              >
+                Points that day
+              </Button>
+              <Button
+                variant={dailyGridSubView === "cumulative" ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setDailyGridSubView("cumulative")}
+              >
+                Cumulative through day
+              </Button>
+            </div>
+            <div className="space-y-0 overflow-x-auto">
+              <div
+                className="grid gap-2 border-b pb-1.5 min-w-[400px]"
+                style={{
+                  gridTemplateColumns: `40px repeat(${durationDays + 2}, minmax(0, 1fr))`,
+                }}
+              >
+                <div className="font-semibold text-xs text-slate-600">Rank</div>
+                <div className="font-semibold text-xs text-slate-600">Team</div>
+                {Array.from({ length: durationDays }, (_, i) => (
+                  <div key={i} className="font-semibold text-xs text-slate-600 text-right">
+                    Day {i + 1}
+                  </div>
+                ))}
+                <div className="font-semibold text-xs text-slate-600 text-right">Total</div>
+              </div>
+              {sortedTeams.map((meetTeam, index) => {
+                const dayPoints = pointsByTeamByDay.get(meetTeam.teamId) ?? [];
+                const cumulative: number[] = [];
+                let sum = 0;
+                for (let d = 0; d < dayPoints.length; d++) {
+                  sum += dayPoints[d];
+                  cumulative[d] = sum;
+                }
+                return (
+                  <div
+                    key={meetTeam.id}
+                    className="grid gap-2 items-center py-2 border-b last:border-0 hover:bg-slate-50 transition-colors min-w-[400px]"
+                    style={{
+                      gridTemplateColumns: `40px repeat(${durationDays + 2}, minmax(0, 1fr))`,
+                    }}
+                  >
+                    <div className="font-bold text-sm">{index + 1}</div>
+                    <div
+                      className="font-semibold text-sm"
+                      style={
+                        meetTeam.team.primaryColor
+                          ? { color: meetTeam.team.primaryColor, fontWeight: 600 }
+                          : {}
+                      }
+                    >
+                      {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                    </div>
+                    {Array.from({ length: durationDays }, (_, i) => (
+                      <div key={i} className="text-right font-medium text-sm">
+                        {(dailyGridSubView === "subScore" ? dayPoints[i] : cumulative[i] ?? 0).toFixed(1)}
+                      </div>
+                    ))}
+                    <div className="text-right font-bold text-sm">
+                      {meetTeam.totalScore.toFixed(1)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : viewMode === "standard" ? (
           // Standard View
           <div className="space-y-0">
             <div className="grid gap-2 border-b pb-1.5" style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}>

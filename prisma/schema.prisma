@@ -218,6 +218,7 @@ model Meet {
   name         String   // "2025 Ivy League Championships"
   date         DateTime?
   location     String?
+  durationDays Int      @default(1) // Meet length in days (1-5)
   conferenceId String?
   teamId       String   // Team that owns/created this meet (legacy - for backward compatibility)
   teamAccountId String? // Team Account (primary team) that owns this meet
@@ -253,6 +254,8 @@ model Meet {
   // Custom event order (JSON array of event IDs in desired order)
   // If null, uses default order from Event.sortOrder
   eventOrder String? // JSON: ["eventId1", "eventId2", ...]
+  // Event day assignment (JSON: {"eventId": 1, "eventId2": 2} = day 1..durationDays)
+  eventDays  String?
 
   team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamAccount Team?   @relation("TeamAccountMeets", fields: [teamAccountId], references: [id], onDelete: SetNull)

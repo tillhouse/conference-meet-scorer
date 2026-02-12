@@ -23,6 +23,7 @@ const formSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
   date: z.string().optional(),
   location: z.string().optional(),
+  durationDays: z.number().min(1).max(5),
   meetType: z.enum(["championship", "dual"]),
 
   // Roster configuration
@@ -105,6 +106,7 @@ export default function NewMeetPageInternal() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [eventOrder, setEventOrder] = useState<string[]>([]);
+  const [eventDays, setEventDays] = useState<Record<string, number>>({});
 
   const {
     register,
@@ -118,6 +120,7 @@ export default function NewMeetPageInternal() {
       name: "",
       date: "",
       location: "",
+      durationDays: 1,
       meetType: "championship",
       maxAthletes: 18,
       diverRatio: 0.333,
@@ -278,8 +281,15 @@ export default function NewMeetPageInternal() {
   const handleEventsChange = useCallback((newEvents: Event[]) => {
     const newEventIds = newEvents.map((e) => e.id);
     setValue("eventIds", newEventIds);
-    // Update order to match new events order
     setEventOrder(newEventIds);
+    // Default new events to day 1
+    setEventDays((prev) => {
+      const next = { ...prev };
+      newEvents.forEach((e) => {
+        if (next[e.id] == null) next[e.id] = 1;
+      });
+      return next;
+    });
   }, [setValue]);
 
   const handleOrderChange = useCallback((newOrder: string[]) => {
@@ -331,6 +341,7 @@ export default function NewMeetPageInternal() {
           name: data.name,
           date: data.date ? new Date(data.date).toISOString() : null,
           location: data.location || null,
+          durationDays: data.durationDays,
           meetType: data.meetType,
           maxAthletes: data.maxAthletes,
           diverRatio: data.diverRatio,
@@ -346,6 +357,7 @@ export default function NewMeetPageInternal() {
           teamIds: data.teamIds,
           eventIds: eventIdsToSave,
           eventOrder: eventOrderToSave ? JSON.stringify(eventOrderToSave) : null,
+          eventDays: Object.keys(eventDays).length > 0 ? JSON.stringify(eventDays) : null,
           teamAccountId: teamAccountId || null, // Link meet to team account
         }),
       });
@@ -428,6 +440,26 @@ export default function NewMeetPageInternal() {
                   placeholder="Blodgett Pool, Cambridge, MA"
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="durationDays">Duration (days)</Label>
+              <Select
+                value={(watch("durationDays") ?? 1).toString()}
+                onValueChange={(value) => setValue("durationDays", parseInt(value, 10))}
+              >
+                <SelectTrigger id="durationDays">
+                  <SelectValue placeholder="Number of days" />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((d) => (
+                    <SelectItem key={d} value={d.toString()}>
+                      {d} {d === 1 ? "day" : "days"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">Length of the meet (1–5 days)</p>
             </div>
 
             <div className="space-y-2">
@@ -642,6 +674,9 @@ export default function NewMeetPageInternal() {
           configuredEvents={configuredEvents}
           onEventsChange={handleEventsChange}
           onOrderChange={handleOrderChange}
+          durationDays={watch("durationDays") ?? 1}
+          eventDays={eventDays}
+          onEventDaysChange={setEventDays}
           divingIncluded={divingIncluded}
           onDivingIncludedChange={(included) => setValue("divingIncluded", included)}
         />

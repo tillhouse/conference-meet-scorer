@@ -6,6 +6,7 @@ const createMeetSchema = z.object({
   name: z.string().min(1, "Meet name is required"),
   date: z.string().nullable().optional(),
   location: z.string().nullable().optional(),
+  durationDays: z.number().min(1).max(5).default(1),
   meetType: z.enum(["championship", "dual"]),
   maxAthletes: z.number().min(1),
   diverRatio: z.number().min(0).max(1),
@@ -21,6 +22,7 @@ const createMeetSchema = z.object({
   teamIds: z.array(z.string()).min(1),
   eventIds: z.array(z.string()).min(1),
   eventOrder: z.string().nullable().optional(),
+  eventDays: z.string().nullable().optional(), // JSON: {"eventId": 1, ...}
   teamAccountId: z.string().nullable().optional(), // Team Account that owns this meet
 });
 
@@ -128,6 +130,7 @@ export async function POST(request: NextRequest) {
         name: data.name,
         date: data.date && data.date.trim() !== "" ? new Date(data.date) : null,
         location: data.location && data.location.trim() !== "" ? data.location : null,
+        durationDays: data.durationDays ?? 1,
         meetType: data.meetType,
         teamId: primaryTeamId, // Legacy field for backward compatibility
         teamAccountId: teamAccountId, // Link to Team Account
@@ -145,6 +148,7 @@ export async function POST(request: NextRequest) {
         relayScoring: data.relayScoring,
         selectedEvents: JSON.stringify(finalEventIds),
         eventOrder: finalEventOrder && finalEventOrder.length > 0 ? JSON.stringify(finalEventOrder) : null,
+        eventDays: data.eventDays && data.eventDays.trim() !== "" ? data.eventDays : null,
       },
     });
 
