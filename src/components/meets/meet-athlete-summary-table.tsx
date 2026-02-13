@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, Fragment, useRef, useEffect, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -70,9 +70,24 @@ interface RelayEntry {
   };
 }
 
+interface MeetEvent {
+  id: string;
+  name: string;
+  eventType?: string;
+}
+
+function abbreviateEventName(name: string): string {
+  return name
+    .replace(/\bFree\b/gi, "FR")
+    .replace(/\bBack\b/gi, "BK")
+    .replace(/\bBreast\b/gi, "BR")
+    .replace(/\bFly\b/gi, "FL");
+}
+
 interface MeetAthleteSummaryTableProps {
   meetLineups: MeetLineup[];
   relayEntries: RelayEntry[];
+  events: MeetEvent[];
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
   scoringPlaces: number;
@@ -113,6 +128,7 @@ interface AthleteSummary {
 export function MeetAthleteSummaryTable({
   meetLineups,
   relayEntries,
+  events = [],
   individualScoring,
   relayScoring,
   scoringPlaces,
@@ -121,13 +137,69 @@ export function MeetAthleteSummaryTable({
   const [nameFilter, setNameFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [yearFilter, setYearFilter] = useState<string>("all");
-  
-  // Sort state
-  const [sortField, setSortField] = useState<SortField>("totalPoints");
+  const [viewMode, setViewMode] = useState<"standard" | "eventGrid">("standard");
+
+  // Sort state (sortField can be SortField or event id for event grid columns)
+  const [sortField, setSortField] = useState<string>("totalPoints");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   
   // Expanded rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  // Sticky bottom horizontal scroll: refs and state
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const bottomScrollRef = useRef<HTMLDivElement>(null);
+  const [horizontalScrollWidth, setHorizontalScrollWidth] = useState(0);
+  const [horizontalScrollClientWidth, setHorizontalScrollClientWidth] = useState(0);
+  const isSyncingFromTable = useRef(false);
+  const isSyncingFromBottom = useRef(false);
+  const showStickyHorizontalScroll = horizontalScrollWidth > horizontalScrollClientWidth;
+
+  const updateHorizontalScrollSize = useCallback(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    setHorizontalScrollWidth(el.scrollWidth);
+    setHorizontalScrollClientWidth(el.clientWidth);
+  }, []);
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    updateHorizontalScrollSize();
+    const ro = new ResizeObserver(updateHorizontalScrollSize);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [viewMode, updateHorizontalScrollSize]);
+
+  // When the sticky strip appears, sync its scroll position to the table
+  useEffect(() => {
+    if (!showStickyHorizontalScroll) return;
+    const table = tableScrollRef.current;
+    const bottom = bottomScrollRef.current;
+    if (table && bottom) bottom.scrollLeft = table.scrollLeft;
+  }, [showStickyHorizontalScroll]);
+
+  const handleTableScroll = useCallback(() => {
+    if (isSyncingFromBottom.current) return;
+    const table = tableScrollRef.current;
+    const bottom = bottomScrollRef.current;
+    if (table && bottom && table.scrollLeft !== bottom.scrollLeft) {
+      isSyncingFromTable.current = true;
+      bottom.scrollLeft = table.scrollLeft;
+      requestAnimationFrame(() => { isSyncingFromTable.current = false; });
+    }
+  }, []);
+
+  const handleBottomScroll = useCallback(() => {
+    if (isSyncingFromTable.current) return;
+    const table = tableScrollRef.current;
+    const bottom = bottomScrollRef.current;
+    if (table && bottom && bottom.scrollLeft !== table.scrollLeft) {
+      isSyncingFromBottom.current = true;
+      table.scrollLeft = bottom.scrollLeft;
+      requestAnimationFrame(() => { isSyncingFromBottom.current = false; });
+    }
+  }, []);
 
   // Calculate athlete summaries
   const athleteSummaries = useMemo(() => {
@@ -266,6 +338,25 @@ export function MeetAthleteSummaryTable({
     return Array.from(summariesMap.values());
   }, [meetLineups, relayEntries, individualScoring, relayScoring, scoringPlaces]);
 
+  // Event grid: only individual and diving events (no relays)
+  const gridEvents = useMemo(
+    () => events.filter((e) => e.eventType !== "relay"),
+    [events]
+  );
+
+  // Per-athlete, per-event points for event grid: number = points, null = competed but 0 (show "-"), undefined = didn't compete (blank)
+  const pointsByAthleteByEvent = useMemo(() => {
+    const map = new Map<string, Map<string, number | null>>();
+    athleteSummaries.forEach((summary) => {
+      const eventMap = new Map<string, number | null>();
+      [...summary.individualEvents, ...summary.relayEvents].forEach((e) => {
+        eventMap.set(e.eventId, e.points === 0 ? null : e.points);
+      });
+      map.set(summary.athleteId, eventMap);
+    });
+    return map;
+  }, [athleteSummaries]);
+
   // Get unique teams (with color) and years for filters
   const availableTeams = useMemo(() => {
     const map = new Map<string, string | null>();
@@ -338,20 +429,34 @@ export function MeetAthleteSummaryTable({
         case "relayEvents":
           comparison = a.relayEventCount - b.relayEventCount;
           break;
+        default: {
+          // Event grid: sort by points in this event (sortField is event id); blank (didn't compete) sorts last
+          const aVal = pointsByAthleteByEvent.get(a.athleteId)?.get(sortField);
+          const bVal = pointsByAthleteByEvent.get(b.athleteId)?.get(sortField);
+          if (aVal === undefined && bVal === undefined) comparison = 0;
+          else if (aVal === undefined) comparison = -1; // a (blank) sorts after b → return positive in desc
+          else if (bVal === undefined) comparison = 1;  // b (blank) sorts after a
+          else {
+            const aNum = aVal === null ? 0 : aVal;
+            const bNum = bVal === null ? 0 : bVal;
+            comparison = aNum - bNum;
+          }
+          break;
+        }
       }
 
       return sortDirection === "asc" ? comparison : -comparison;
     });
 
     return filtered;
-  }, [athleteSummaries, nameFilter, teamFilter, yearFilter, sortField, sortDirection]);
+  }, [athleteSummaries, nameFilter, teamFilter, yearFilter, sortField, sortDirection, pointsByAthleteByEvent]);
 
-  const handleSort = (field: SortField) => {
+  const handleSort = (field: string) => {
     if (sortField === field) {
       setSortDirection(sortDirection === "asc" ? "desc" : "asc");
     } else {
       setSortField(field);
-      setSortDirection("desc"); // Default to desc for most fields
+      setSortDirection(field === "name" || field === "team" || field === "year" ? "asc" : "desc");
     }
   };
 
@@ -363,14 +468,16 @@ export function MeetAthleteSummaryTable({
 
   const hasActiveFilters = nameFilter.trim() || teamFilter !== "all" || yearFilter !== "all";
 
-  const getSortIcon = (field: SortField) => {
+  const getSortIcon = (field: string) => {
     if (sortField !== field) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+      return (
+        <ArrowUpDown className="h-3 w-3 ml-1 shrink-0 opacity-0 group-hover:opacity-40 transition-opacity" aria-hidden />
+      );
     }
     return sortDirection === "asc" ? (
-      <ArrowUp className="h-4 w-4 ml-1" />
+      <ArrowUp className="h-3 w-3 ml-1 shrink-0 text-slate-500" aria-hidden />
     ) : (
-      <ArrowDown className="h-4 w-4 ml-1" />
+      <ArrowDown className="h-3 w-3 ml-1 shrink-0 text-slate-500" aria-hidden />
     );
   };
 
@@ -383,7 +490,7 @@ export function MeetAthleteSummaryTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 [&_table_th]:h-8 [&_table_th]:px-1.5 [&_table_th]:text-xs [&_table_td]:py-1.5 [&_table_td]:px-1.5 [&_table_td]:text-xs">
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end p-4 bg-slate-50 rounded-md border">
         <div className="flex-1 min-w-[200px]">
@@ -436,6 +543,20 @@ export function MeetAthleteSummaryTable({
             </SelectContent>
           </Select>
         </div>
+        <div className="min-w-[140px]">
+          <label className="text-sm font-medium text-slate-700 mb-1 block">View</label>
+          <Select value={viewMode} onValueChange={(v) => setViewMode(v as "standard" | "eventGrid")}>
+            <SelectTrigger>
+              <SelectValue placeholder="View" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard">Standard</SelectItem>
+              {gridEvents.length > 0 && (
+                <SelectItem value="eventGrid">Event Grid</SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
         {hasActiveFilters && (
           <Button
             variant="outline"
@@ -454,15 +575,21 @@ export function MeetAthleteSummaryTable({
         Showing {filteredAndSortedSummaries.length} of {athleteSummaries.length} athletes
       </div>
 
-      {/* Table */}
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
+      {/* Standard table - scrollable so header row sticks; horizontal scrollbar sticks at bottom */}
+      {viewMode === "standard" && (
+      <div className="flex flex-col rounded-md border min-w-0" style={{ maxHeight: "70vh" }}>
+        <div
+          ref={tableScrollRef}
+          className="flex-1 min-h-0 overflow-auto [&::-webkit-scrollbar]:h-0"
+          onScroll={handleTableScroll}
+        >
+          <Table noScrollWrapper>
+          <TableHeader className="[&_tr_th]:sticky [&_tr_th]:top-0 [&_tr_th]:z-10 [&_tr_th]:bg-white [&_tr_th]:shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
             <TableRow>
               <TableHead>
                 <button
                   onClick={() => handleSort("name")}
-                  className="flex items-center hover:text-slate-900 transition-colors"
+                  className="group flex items-center hover:text-slate-900 transition-colors"
                 >
                   Athlete
                   {getSortIcon("name")}
@@ -471,7 +598,7 @@ export function MeetAthleteSummaryTable({
               <TableHead>
                 <button
                   onClick={() => handleSort("team")}
-                  className="flex items-center hover:text-slate-900 transition-colors"
+                  className="group flex items-center hover:text-slate-900 transition-colors"
                 >
                   Team
                   {getSortIcon("team")}
@@ -480,7 +607,7 @@ export function MeetAthleteSummaryTable({
               <TableHead>
                 <button
                   onClick={() => handleSort("year")}
-                  className="flex items-center hover:text-slate-900 transition-colors"
+                  className="group flex items-center hover:text-slate-900 transition-colors"
                 >
                   Year
                   {getSortIcon("year")}
@@ -489,7 +616,7 @@ export function MeetAthleteSummaryTable({
               <TableHead>
                 <button
                   onClick={() => handleSort("individualEvents")}
-                  className="flex items-center hover:text-slate-900 transition-colors"
+                  className="group flex items-center hover:text-slate-900 transition-colors"
                 >
                   Individual Events
                   {getSortIcon("individualEvents")}
@@ -500,7 +627,7 @@ export function MeetAthleteSummaryTable({
               <TableHead>
                 <button
                   onClick={() => handleSort("totalPoints")}
-                  className="flex items-center hover:text-slate-900 transition-colors"
+                  className="group flex items-center hover:text-slate-900 transition-colors"
                 >
                   Total Points
                   {getSortIcon("totalPoints")}
@@ -511,7 +638,7 @@ export function MeetAthleteSummaryTable({
           <TableBody>
             {filteredAndSortedSummaries.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-slate-500">
+                <TableCell colSpan={7} className="text-center py-6 text-slate-500">
                   No athletes match the current filters.
                 </TableCell>
               </TableRow>
@@ -557,31 +684,33 @@ export function MeetAthleteSummaryTable({
                       </TableCell>
                       <TableCell>{summary.year || "-"}</TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium">{summary.individualEventCount}</span>
+                        <span className="font-medium">{summary.individualEventCount}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium">{summary.relayEventCount}</span>
+                        <span className="font-medium">{summary.relayEventCount}</span>
                       </TableCell>
                       <TableCell>
-                        <span className="text-sm font-medium">{summary.divingEventCount}</span>
+                        <span className="font-medium">{summary.divingEventCount}</span>
                       </TableCell>
-                      <TableCell className="font-bold text-lg">
-                        {summary.totalPoints.toFixed(1)}
+                      <TableCell className="font-bold text-sm">
+                        <span style={summary.teamColor ? { color: summary.teamColor } : undefined}>
+                          {summary.totalPoints.toFixed(1)}
+                        </span>
                       </TableCell>
                     </TableRow>
                     {isExpanded && (
                       <TableRow key={`${summary.athleteId}-details`} className="bg-slate-50">
-                        <TableCell colSpan={7} className="py-4">
-                          <div className="space-y-4 pl-4 border-l-2 border-slate-300">
+                        <TableCell colSpan={7} className="py-3">
+                          <div className="space-y-3 pl-3 border-l-2 border-slate-300">
                             {/* Individual Swimming Events */}
                             {swimmingEvents.length > 0 && (
                               <div>
-                                <h4 className="font-semibold text-sm text-slate-700 mb-2">
+                                <h4 className="font-semibold text-xs text-slate-700 mb-1.5">
                                   Individual Swimming Events ({swimmingEvents.length})
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                   {swimmingEvents.map((e) => (
-                                    <div key={e.eventId} className="text-sm text-slate-600">
+                                    <div key={e.eventId} className="text-xs text-slate-600">
                                       <span className="font-medium">{e.eventName}</span>
                                       {e.place && (
                                         <span className="ml-2 text-slate-500">
@@ -603,12 +732,12 @@ export function MeetAthleteSummaryTable({
                             {/* Diving Events */}
                             {divingEvents.length > 0 && (
                               <div>
-                                <h4 className="font-semibold text-sm text-slate-700 mb-2">
+                                <h4 className="font-semibold text-xs text-slate-700 mb-1.5">
                                   Diving Events ({divingEvents.length})
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                   {divingEvents.map((e) => (
-                                    <div key={e.eventId} className="text-sm text-slate-600">
+                                    <div key={e.eventId} className="text-xs text-slate-600">
                                       <span className="font-medium">{e.eventName}</span>
                                       {e.place && (
                                         <span className="ml-2 text-slate-500">
@@ -630,12 +759,12 @@ export function MeetAthleteSummaryTable({
                             {/* Relay Events */}
                             {summary.relayEvents.length > 0 && (
                               <div>
-                                <h4 className="font-semibold text-sm text-slate-700 mb-2">
+                                <h4 className="font-semibold text-xs text-slate-700 mb-1.5">
                                   Relay Events ({summary.relayEvents.length})
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
                                   {summary.relayEvents.map((e) => (
-                                    <div key={e.eventId} className="text-sm text-slate-600">
+                                    <div key={e.eventId} className="text-xs text-slate-600">
                                       <span className="font-medium">{e.eventName}</span>
                                       {e.place && (
                                         <span className="ml-2 text-slate-500">
@@ -655,7 +784,7 @@ export function MeetAthleteSummaryTable({
                             )}
                             
                             {allEvents.length === 0 && (
-                              <div className="text-sm text-slate-400 italic">
+                              <div className="text-xs text-slate-400 italic">
                                 No events entered
                               </div>
                             )}
@@ -669,7 +798,139 @@ export function MeetAthleteSummaryTable({
             )}
           </TableBody>
         </Table>
+        </div>
+        {showStickyHorizontalScroll && (
+          <div
+            ref={bottomScrollRef}
+            className="sticky bottom-0 shrink-0 h-4 overflow-x-auto overflow-y-hidden border-t bg-slate-100"
+            onScroll={handleBottomScroll}
+            aria-label="Horizontal scroll"
+          >
+            <div style={{ height: 1, width: horizontalScrollWidth, minWidth: "100%" }} />
+          </div>
+        )}
       </div>
+      )}
+
+      {/* Event Grid: points per athlete per event (individual + diving only, no relays) */}
+      {viewMode === "eventGrid" && gridEvents.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-600">
+            Points scored by each athlete in each event. Blank = did not compete; — = competed but did not score.
+          </p>
+          <div className="flex flex-col rounded-md border min-w-0" style={{ maxHeight: "70vh" }}>
+            <div
+              ref={tableScrollRef}
+              className="flex-1 min-h-0 overflow-auto [&::-webkit-scrollbar]:h-0"
+              onScroll={handleTableScroll}
+            >
+              <Table noScrollWrapper>
+              <TableHeader className="[&_tr_th]:sticky [&_tr_th]:top-0 [&_tr_th]:z-10 [&_tr_th]:bg-white [&_tr_th]:shadow-[0_1px_0_0_rgba(0,0,0,0.08)]">
+                <TableRow>
+                  <TableHead className="min-w-[140px] sticky left-0 z-20 bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                    <button
+                      onClick={() => handleSort("name")}
+                      className="group flex items-center hover:text-slate-900 transition-colors"
+                    >
+                      Athlete
+                      {getSortIcon("name")}
+                    </button>
+                  </TableHead>
+                  <TableHead className="min-w-[120px]">
+                    <button
+                      onClick={() => handleSort("team")}
+                      className="group flex items-center hover:text-slate-900 transition-colors"
+                    >
+                      Team
+                      {getSortIcon("team")}
+                    </button>
+                  </TableHead>
+                  <TableHead className="min-w-[60px]">
+                    <button
+                      onClick={() => handleSort("year")}
+                      className="group flex items-center hover:text-slate-900 transition-colors"
+                    >
+                      Year
+                      {getSortIcon("year")}
+                    </button>
+                  </TableHead>
+                  {gridEvents.map((ev) => (
+                    <TableHead key={ev.id} className="text-center min-w-[56px] whitespace-nowrap" title={ev.name}>
+                      <button
+                        onClick={() => handleSort(ev.id)}
+                        className="group flex items-center justify-center w-full hover:text-slate-900 transition-colors"
+                      >
+                        {abbreviateEventName(ev.name)}
+                        {getSortIcon(ev.id)}
+                      </button>
+                    </TableHead>
+                  ))}
+                  <TableHead className="text-center min-w-[72px] font-semibold">
+                    <button
+                      onClick={() => handleSort("totalPoints")}
+                      className="group flex items-center justify-center w-full hover:text-slate-900 transition-colors"
+                    >
+                      Total Points
+                      {getSortIcon("totalPoints")}
+                    </button>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredAndSortedSummaries.map((summary) => {
+                  const eventPoints = pointsByAthleteByEvent.get(summary.athleteId);
+                  return (
+                    <TableRow key={summary.athleteId}>
+                      <TableCell className="font-medium sticky left-0 z-[5] bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
+                        {formatName(summary.firstName, summary.lastName)}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          style={summary.teamColor ? { color: summary.teamColor, fontWeight: 600 } : {}}
+                        >
+                          {summary.teamName}
+                        </span>
+                      </TableCell>
+                      <TableCell>{summary.year || "-"}</TableCell>
+                      {gridEvents.map((ev) => {
+                        const val = eventPoints?.get(ev.id);
+                        const pointStyle = summary.teamColor ? { color: summary.teamColor } : undefined;
+                        return (
+                          <TableCell key={ev.id} className="text-center">
+                            {val === undefined ? (
+                              ""
+                            ) : val === null ? (
+                              <span style={pointStyle ? { ...pointStyle, opacity: 0.6 } : undefined} className={!pointStyle ? "text-slate-400" : ""}>—</span>
+                            ) : (
+                              <span style={pointStyle}>{val.toFixed(1)}</span>
+                            )}
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-center font-bold">
+                        <span style={summary.teamColor ? { color: summary.teamColor } : undefined}>
+                          {summary.totalPoints.toFixed(1)}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            </div>
+            {showStickyHorizontalScroll && (
+              <div
+                ref={bottomScrollRef}
+                className="sticky bottom-0 shrink-0 h-4 overflow-x-auto overflow-y-hidden border-t bg-slate-100"
+                onScroll={handleBottomScroll}
+                aria-label="Horizontal scroll"
+              >
+                <div style={{ height: 1, width: horizontalScrollWidth, minWidth: "100%" }} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -67,7 +67,8 @@ type SortColumn =
   | "divers"
   | "ptsPerSwim"
   | "ptsPerDive"
-  | "ptsPerSplash";
+  | "ptsPerSplash"
+  | "day-1" | "day-2" | "day-3" | "day-4" | "day-5";
 
 type SortDirection = "asc" | "desc";
 
@@ -246,6 +247,23 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
       } else if (sortColumn === "total") {
         aValue = a.totalScore;
         bValue = b.totalScore;
+      } else if (
+        sortColumn === "day-1" ||
+        sortColumn === "day-2" ||
+        sortColumn === "day-3" ||
+        sortColumn === "day-4" ||
+        sortColumn === "day-5"
+      ) {
+        const dayIndex = parseInt(sortColumn.split("-")[1], 10) - 1;
+        const aDayPoints = pointsByTeamByDay.get(a.teamId) ?? [];
+        const bDayPoints = pointsByTeamByDay.get(b.teamId) ?? [];
+        if (dailyGridSubView === "subScore") {
+          aValue = aDayPoints[dayIndex] ?? 0;
+          bValue = bDayPoints[dayIndex] ?? 0;
+        } else {
+          aValue = aDayPoints.slice(0, dayIndex + 1).reduce((s, n) => s + n, 0);
+          bValue = bDayPoints.slice(0, dayIndex + 1).reduce((s, n) => s + n, 0);
+        }
       } else {
         // Advanced stats columns
         const aStats = teamStats.get(a.teamId);
@@ -285,7 +303,7 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
           : (bValue as number) - (aValue as number);
       }
     });
-  }, [displayTeams, sortColumn, sortDirection, teamStats]);
+  }, [displayTeams, sortColumn, sortDirection, teamStats, pointsByTeamByDay, dailyGridSubView]);
 
   // Helper to render sortable header
   const renderSortableHeader = (
@@ -371,6 +389,25 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
                 </SelectContent>
               </Select>
             )}
+            {viewMode === "dailyGrid" && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-slate-600">Show:</span>
+                <Button
+                  variant={dailyGridSubView === "subScore" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setDailyGridSubView("subScore")}
+                >
+                  Daily Points
+                </Button>
+                <Button
+                  variant={dailyGridSubView === "cumulative" ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setDailyGridSubView("cumulative")}
+                >
+                  Cumulative Points
+                </Button>
+              </div>
+            )}
             <Select
               value={viewMode}
               onValueChange={(v) => setViewMode(v as ViewMode)}
@@ -391,26 +428,8 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
       </CardHeader>
       <CardContent className="pt-0">
         {viewMode === "dailyGrid" ? (
-          // Daily Grid View
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-600">Show:</span>
-              <Button
-                variant={dailyGridSubView === "subScore" ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setDailyGridSubView("subScore")}
-              >
-                Points that day
-              </Button>
-              <Button
-                variant={dailyGridSubView === "cumulative" ? "secondary" : "outline"}
-                size="sm"
-                onClick={() => setDailyGridSubView("cumulative")}
-              >
-                Cumulative through day
-              </Button>
-            </div>
-            <div className="space-y-0 overflow-x-auto">
+          // Daily Grid View - table starts immediately for consistent positioning
+          <div className="space-y-0 overflow-x-auto">
               <div
                 className="grid gap-2 border-b pb-1.5 min-w-[400px]"
                 style={{
@@ -418,13 +437,18 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
                 }}
               >
                 <div className="font-semibold text-xs text-slate-600">Rank</div>
-                <div className="font-semibold text-xs text-slate-600">Team</div>
-                {Array.from({ length: durationDays }, (_, i) => (
-                  <div key={i} className="font-semibold text-xs text-slate-600 text-right">
-                    Day {i + 1}
-                  </div>
-                ))}
-                <div className="font-semibold text-xs text-slate-600 text-right">Total</div>
+                {renderSortableHeader("Team", "team", "left")}
+                {Array.from({ length: durationDays }, (_, i) => {
+                  const dayCol = `day-${i + 1}` as SortColumn;
+                  return (
+                    <div key={i} className="flex justify-end">
+                      {renderSortableHeader(`Day ${i + 1}`, dayCol, "right")}
+                    </div>
+                  );
+                })}
+                <div className="flex justify-end">
+                  {renderSortableHeader("Total", "total", "right")}
+                </div>
               </div>
               {sortedTeams.map((meetTeam, index) => {
                 const dayPoints = pointsByTeamByDay.get(meetTeam.teamId) ?? [];
@@ -465,7 +489,6 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
                 );
               })}
             </div>
-          </div>
         ) : viewMode === "standard" ? (
           // Standard View
           <div className="space-y-0">

@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { MeetAthleteSummaryTable } from "@/components/meets/meet-athlete-summary-table";
 import { MeetNavigation } from "@/components/meets/meet-navigation";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
+import { sortEventsByOrder } from "@/lib/event-utils";
 
 export default async function MeetAthletesPage({
   params,
@@ -58,6 +59,17 @@ export default async function MeetAthletesPage({
     ? (JSON.parse(meet.relayScoring) as Record<string, number>)
     : {};
 
+  const selectedEventIds = meet.selectedEvents
+    ? (JSON.parse(meet.selectedEvents) as string[])
+    : [];
+  const eventOrder = meet.eventOrder
+    ? (JSON.parse(meet.eventOrder) as string[])
+    : null;
+  const eventsUnsorted = await prisma.event.findMany({
+    where: { id: { in: selectedEventIds } },
+  });
+  const events = sortEventsByOrder(eventsUnsorted, eventOrder);
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -84,6 +96,7 @@ export default async function MeetAthletesPage({
           <MeetAthleteSummaryTable
             meetLineups={meet.meetLineups}
             relayEntries={meet.relayEntries}
+            events={events}
             individualScoring={individualScoring}
             relayScoring={relayScoring}
             scoringPlaces={meet.scoringPlaces}
