@@ -134,6 +134,16 @@ export default async function EventDetailPage({
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
 
+  const testSpotAthleteIds: string[] = [];
+  meet.meetTeams?.forEach((mt) => {
+    const raw = (mt as { testSpotAthleteIds?: string | null }).testSpotAthleteIds;
+    if (raw) {
+      try {
+        testSpotAthleteIds.push(...(JSON.parse(raw) as string[]));
+      } catch (_) {}
+    }
+  });
+
   // For relay events, build athlete id -> name map from all meet lineups (so we can show split names)
   let athleteIdToName: Record<string, string> = {};
   if (event.eventType === "relay") {
@@ -191,6 +201,7 @@ export default async function EventDetailPage({
         scoringPlaces={meet.scoringPlaces}
         hasResults={hasResults}
         meetId={id}
+        testSpotAthleteIds={testSpotAthleteIds}
       />
     </div>
   );

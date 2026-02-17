@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { parseTimeToSeconds, formatSecondsToTime } from "@/lib/utils";
+import { getScoringAthleteIdSet } from "@/lib/meet-scoring";
 
 export async function POST(
   request: NextRequest,
@@ -269,6 +270,23 @@ export async function POST(
     });
 
     for (const meetTeam of meetTeams) {
+      const selectedAthletes = meetTeam.selectedAthletes
+        ? (JSON.parse(meetTeam.selectedAthletes) as string[])
+        : [];
+      const mt = meetTeam as typeof meetTeam & { testSpotAthleteIds?: string | null; testSpotScoringAthleteId?: string | null };
+      const testSpotAthleteIds = mt.testSpotAthleteIds
+        ? (JSON.parse(mt.testSpotAthleteIds) as string[])
+        : [];
+      let testSpotScoringAthleteId = mt.testSpotScoringAthleteId;
+      if (testSpotAthleteIds.length > 0 && (!testSpotScoringAthleteId || !testSpotAthleteIds.includes(testSpotScoringAthleteId))) {
+        testSpotScoringAthleteId = testSpotAthleteIds[0];
+      }
+      const scoringSet = getScoringAthleteIdSet(
+        selectedAthletes,
+        testSpotAthleteIds,
+        testSpotScoringAthleteId ?? null
+      );
+
       // Get all lineups for this team
       const teamLineups = await prisma.meetLineup.findMany({
         where: {
@@ -290,12 +308,12 @@ export async function POST(
         },
       });
 
-      // Calculate scores by type
+      // Calculate scores by type (only scoring athletes count toward team total)
       const individualEntries = teamLineups.filter(
-        (l) => l.event.eventType === "individual"
+        (l) => l.event.eventType === "individual" && scoringSet.has(l.athleteId)
       );
       const divingEntries = teamLineups.filter(
-        (l) => l.event.eventType === "diving"
+        (l) => l.event.eventType === "diving" && scoringSet.has(l.athleteId)
       );
 
       const individualScore = individualEntries.reduce(
@@ -312,15 +330,25 @@ export async function POST(
       );
       const totalScore = individualScore + divingScore + relayScore;
 
-      // Update meet team scores
+      // Update meet team scores (and persist default test-spot scorer if we had to pick one)
+      const updateData: {
+        individualScore: number;
+        divingScore: number;
+        relayScore: number;
+        totalScore: number;
+        testSpotScoringAthleteId?: string;
+      } = {
+        individualScore,
+        divingScore,
+        relayScore,
+        totalScore,
+      };
+      if (testSpotAthleteIds.length > 0 && testSpotScoringAthleteId && mt.testSpotScoringAthleteId !== testSpotScoringAthleteId) {
+        updateData.testSpotScoringAthleteId = testSpotScoringAthleteId;
+      }
       await prisma.meetTeam.update({
         where: { id: meetTeam.id },
-        data: {
-          individualScore,
-          divingScore,
-          relayScore,
-          totalScore,
-        },
+        data: updateData,
       });
     }
 

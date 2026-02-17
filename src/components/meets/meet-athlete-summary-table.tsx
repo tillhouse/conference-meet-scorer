@@ -91,6 +91,8 @@ interface MeetAthleteSummaryTableProps {
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
   scoringPlaces: number;
+  /** Athlete IDs in the test spot (show "Test" badge) */
+  testSpotAthleteIds?: string[];
 }
 
 type SortField = "name" | "team" | "year" | "totalPoints" | "individualEvents" | "relayEvents";
@@ -132,7 +134,9 @@ export function MeetAthleteSummaryTable({
   individualScoring,
   relayScoring,
   scoringPlaces,
+  testSpotAthleteIds = [],
 }: MeetAthleteSummaryTableProps) {
+  const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
   // Filter state
   const [nameFilter, setNameFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -673,6 +677,9 @@ export function MeetAthleteSummaryTable({
                             <ChevronRight className="h-4 w-4 text-slate-400" />
                           )}
                           {formatName(summary.firstName, summary.lastName)}
+                          {testSpotSet.has(summary.athleteId) && (
+                            <Badge variant="secondary" className="ml-1.5 text-xs font-normal">Test</Badge>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -882,7 +889,12 @@ export function MeetAthleteSummaryTable({
                   return (
                     <TableRow key={summary.athleteId}>
                       <TableCell className="font-medium sticky left-0 z-[5] bg-white shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">
-                        {formatName(summary.firstName, summary.lastName)}
+                        <span className="flex items-center gap-1.5">
+                          {formatName(summary.firstName, summary.lastName)}
+                          {testSpotSet.has(summary.athleteId) && (
+                            <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                          )}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span

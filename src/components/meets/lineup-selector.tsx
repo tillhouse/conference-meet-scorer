@@ -166,7 +166,12 @@ export function LineupSelector({
           lineups[athleteId] = eventArray;
         }
       });
-
+      // #region agent log
+      const allInState = Object.keys(athleteLineups);
+      const inPayload = Object.keys(lineups);
+      const zeroEventAthletes = allInState.filter((id) => !(lineups[id]?.length));
+      fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'lineup-selector.tsx handleSave',message:'Payload omits zero-event athletes',data:{athleteLineupsCount:allInState.length,payloadCount:inPayload.length,zeroEventAthletes,inPayload},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+      // #endregion
       console.log("Saving lineups:", { lineups, athleteCount: Object.keys(lineups).length });
       console.log("Lineups structure check:", {
         isObject: typeof lineups === 'object',

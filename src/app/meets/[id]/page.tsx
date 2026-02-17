@@ -152,6 +152,7 @@ export default async function MeetDetailPage({
 
       {/* Team Standings - View only; meet actions live in header */}
       <TeamStandings 
+        meetId={id}
         meetTeams={meet.meetTeams} 
         meetLineups={meet.meetLineups}
         relayEntries={meet.relayEntries}

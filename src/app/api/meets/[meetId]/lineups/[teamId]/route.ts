@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { normalizeEventName } from "@/lib/utils";
+import { appendFileSync } from "fs";
+import { join } from "path";
+
+const DEBUG_LOG = join(process.cwd(), ".cursor", "debug.log");
+function debugLog(payload: object) {
+  try {
+    appendFileSync(DEBUG_LOG, JSON.stringify(payload) + "\n");
+  } catch (_) {}
+}
 
 const saveLineupSchema = z.object({
   lineups: z.record(z.string(), z.array(z.string()).min(1)), // { athleteId: [eventId1, eventId2, ...] } - at least one event per athlete
@@ -36,7 +45,12 @@ export async function GET(
       }
       lineupsByAthlete[lineup.athleteId].push(lineup.eventId);
     });
-
+    // #region agent log
+    const getAthleteIds = Object.keys(lineupsByAthlete);
+    const getPayload = { location: "api/lineups GET", message: "Lineup GET returned athleteIds", data: { meetId, teamId, athleteIds: getAthleteIds, count: getAthleteIds.length }, timestamp: Date.now(), hypothesisId: "H3" };
+    fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(getPayload)}).catch(()=>{});
+    debugLog(getPayload);
+    // #endregion
     return NextResponse.json({ lineups: lineupsByAthlete });
   } catch (error) {
     console.error("Error fetching lineups:", error);
@@ -80,6 +94,13 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    const meetTeam = await prisma.meetTeam.findUnique({
+      where: { meetId_teamId: { meetId, teamId } },
+    });
+    const rosterAthleteIds: string[] = meetTeam?.selectedAthletes
+      ? (JSON.parse(meetTeam.selectedAthletes) as string[])
+      : [];
 
     // Get all athletes and events to validate
     const athleteIds = Object.keys(data.lineups);
@@ -224,7 +245,13 @@ export async function POST(
         },
       },
     });
-    
+    // #region agent log
+    const payloadAthleteIds = Object.keys(data.lineups);
+    const onRosterNotInPayload = rosterAthleteIds.filter((id) => !payloadAthleteIds.includes(id));
+    const postPayload = { location: "api/lineups POST", message: "Lineup save: delete all then create payload only", data: { meetId, teamId, rosterCount: rosterAthleteIds.length, payloadAthleteIds, payloadCount: payloadAthleteIds.length, onRosterNotInPayload, deletedCount: deleteResult.count }, timestamp: Date.now(), hypothesisId: "H2" };
+    fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(postPayload)}).catch(()=>{});
+    debugLog(postPayload);
+    // #endregion
     console.log(`[Lineup Save] Deleted ${deleteResult.count} existing lineups for team ${teamId}`);
     
     // Verify deletion worked

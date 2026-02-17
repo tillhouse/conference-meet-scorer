@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { appendFileSync } from "fs";
+import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MeetAthleteSummaryTable } from "@/components/meets/meet-athlete-summary-table";
@@ -16,6 +18,9 @@ export default async function MeetAthletesPage({
   const meet = await prisma.meet.findUnique({
     where: { id },
     include: {
+      meetTeams: {
+        select: { testSpotAthleteIds: true },
+      },
       meetLineups: {
         include: {
           athlete: {
@@ -52,6 +57,13 @@ export default async function MeetAthletesPage({
     notFound();
   }
 
+  // #region agent log
+  const lineupAthleteIds = [...new Set(meet.meetLineups.map((l) => l.athleteId))];
+  const h1Payload = { location: "athletes/page", message: "Athlete Summary: meetLineup athleteIds", data: { meetId: id, lineupAthleteCount: lineupAthleteIds.length, lineupAthleteIds }, timestamp: Date.now(), hypothesisId: "H1" };
+  fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(h1Payload)}).catch(()=>{});
+  try { appendFileSync(join(process.cwd(), ".cursor", "debug.log"), JSON.stringify(h1Payload) + "\n"); } catch (_) {}
+  // #endregion
+
   const individualScoring = meet.individualScoring
     ? (JSON.parse(meet.individualScoring) as Record<string, number>)
     : {};
@@ -69,6 +81,16 @@ export default async function MeetAthletesPage({
     where: { id: { in: selectedEventIds } },
   });
   const events = sortEventsByOrder(eventsUnsorted, eventOrder);
+
+  const testSpotAthleteIds: string[] = [];
+  meet.meetTeams?.forEach((mt) => {
+    if (mt.testSpotAthleteIds) {
+      try {
+        const ids = JSON.parse(mt.testSpotAthleteIds) as string[];
+        testSpotAthleteIds.push(...ids);
+      } catch (_) {}
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -100,6 +122,7 @@ export default async function MeetAthletesPage({
             individualScoring={individualScoring}
             relayScoring={relayScoring}
             scoringPlaces={meet.scoringPlaces}
+            testSpotAthleteIds={testSpotAthleteIds}
           />
         </CardContent>
       </Card>

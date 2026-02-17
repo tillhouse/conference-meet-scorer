@@ -298,7 +298,10 @@ model MeetTeam {
   
   // Roster selection (JSON array of athlete IDs)
   selectedAthletes String? // JSON: ["athleteId1", "athleteId2", ...]
-  
+  // Test spot: bubble candidates for one slot (subset of selectedAthletes)
+  testSpotAthleteIds      String? // JSON: ["id1", "id2", "id3"]
+  testSpotScoringAthleteId String? // which test-spot athlete's points count
+
   // Pre-calculated scores for quick display
   individualScore Float @default(0)
   relayScore      Float @default(0)

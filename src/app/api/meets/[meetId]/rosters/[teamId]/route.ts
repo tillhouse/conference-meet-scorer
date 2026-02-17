@@ -4,6 +4,8 @@ import { z } from "zod";
 
 const saveRosterSchema = z.object({
   athleteIds: z.array(z.string()),
+  testSpotAthleteIds: z.array(z.string()).optional(),
+  testSpotScoringAthleteId: z.string().optional(),
 });
 
 export async function GET(
@@ -32,9 +34,15 @@ export async function GET(
     const athleteIds = meetTeam.selectedAthletes
       ? (JSON.parse(meetTeam.selectedAthletes) as string[])
       : [];
+    const testSpotAthleteIds = meetTeam.testSpotAthleteIds
+      ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
+      : [];
+    const testSpotScoringAthleteId = meetTeam.testSpotScoringAthleteId ?? null;
 
     return NextResponse.json({
       athleteIds,
+      testSpotAthleteIds,
+      testSpotScoringAthleteId,
     });
   } catch (error) {
     console.error("Error fetching roster:", error);
@@ -97,21 +105,56 @@ export async function POST(
       );
     }
 
-    // Validate roster constraints
-    const swimmers = athletes.filter((a) => !a.isDiver).length;
-    const divers = athletes.filter((a) => a.isDiver).length;
-    const rosterCount = swimmers + divers * meet.diverRatio;
+    // Test spot: optional bubble candidates for one slot; only one's points count
+    const testSpotAthleteIds = data.testSpotAthleteIds ?? [];
+    const testSpotScoringAthleteId = data.testSpotScoringAthleteId ?? null;
 
-    if (rosterCount > meet.maxAthletes) {
+    const athleteIdSet = new Set(data.athleteIds);
+    const testSpotSet = new Set(testSpotAthleteIds);
+
+    // Test spot must be a subset of selected athletes; scorer must be in test spot when test spot is used
+    if (testSpotAthleteIds.length > 0) {
+      if (testSpotAthleteIds.some((id) => !athleteIdSet.has(id))) {
+        return NextResponse.json(
+          { error: "testSpotAthleteIds must be a subset of athleteIds" },
+          { status: 400 }
+        );
+      }
+      if (!testSpotScoringAthleteId || !testSpotSet.has(testSpotScoringAthleteId)) {
+        return NextResponse.json(
+          { error: "testSpotScoringAthleteId must be one of testSpotAthleteIds when test spot is used" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Scoring roster = everyone except test-spot candidates, plus the one scoring test-spot athlete
+    const scoringAthleteIds = data.athleteIds.filter((id) => !testSpotSet.has(id) || id === testSpotScoringAthleteId);
+    const scoringAthletes = athletes.filter((a) => scoringAthleteIds.includes(a.id));
+    const scoringSwimmers = scoringAthletes.filter((a) => !a.isDiver).length;
+    const scoringDivers = scoringAthletes.filter((a) => a.isDiver).length;
+    const scoringRosterCount = scoringSwimmers + scoringDivers * meet.diverRatio;
+
+    if (scoringRosterCount > meet.maxAthletes) {
       return NextResponse.json(
         {
-          error: `Roster exceeds limit: ${rosterCount.toFixed(2)} > ${meet.maxAthletes}`,
+          error: `Scoring roster exceeds limit: ${scoringRosterCount.toFixed(2)} > ${meet.maxAthletes}`,
         },
         { status: 400 }
       );
     }
 
     // Save the roster selection to MeetTeam
+    const updateData: {
+      selectedAthletes: string;
+      testSpotAthleteIds: string | null;
+      testSpotScoringAthleteId: string | null;
+    } = {
+      selectedAthletes: JSON.stringify(data.athleteIds),
+      testSpotAthleteIds: testSpotAthleteIds.length > 0 ? JSON.stringify(testSpotAthleteIds) : null,
+      testSpotScoringAthleteId: testSpotAthleteIds.length > 0 ? testSpotScoringAthleteId : null,
+    };
+
     try {
       await prisma.meetTeam.update({
         where: {
@@ -120,9 +163,7 @@ export async function POST(
             teamId,
           },
         },
-        data: {
-          selectedAthletes: JSON.stringify(data.athleteIds),
-        },
+        data: updateData,
       });
     } catch (updateError: any) {
       console.error("Error updating MeetTeam:", updateError);
@@ -198,7 +239,8 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: "Roster saved successfully",
-      rosterCount: rosterCount.toFixed(2),
+      rosterCount: scoringRosterCount.toFixed(2),
+      hasTestSpot: testSpotAthleteIds.length > 0,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -107,6 +107,8 @@ interface EventDetailViewProps {
   scoringPlaces: number;
   hasResults: boolean;
   meetId: string;
+  /** Athlete IDs in the test spot (show "Test" badge next to name) */
+  testSpotAthleteIds?: string[];
 }
 
 interface TeamEventStats {
@@ -122,6 +124,8 @@ interface TeamEventStats {
       entries: Array<{
         athleteId: string;
         athleteName: string;
+        /** For individual/diving: the athlete's id (for test-spot badge) */
+        realAthleteId?: string;
         place: number | null;
         points: number;
         time: string | null;
@@ -147,7 +151,9 @@ export function EventDetailView({
   scoringPlaces,
   hasResults,
   meetId,
+  testSpotAthleteIds = [],
 }: EventDetailViewProps) {
+  const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
   const router = useRouter();
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingTimes, setEditingTimes] = useState<Map<string, string>>(new Map());
@@ -237,6 +243,7 @@ export function EventDetailView({
       stats.entries.push({
         athleteId: lineup.id,
         athleteName: formatName(lineup.athlete.firstName, lineup.athlete.lastName),
+        realAthleteId: lineup.athlete.id,
         place,
         points,
         time: getEffectiveTime(lineup),
@@ -623,7 +630,14 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="font-medium pl-2">
-                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              {entry.athleteName}
+                                              {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
+                                                <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                            </span>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <span
@@ -697,7 +711,14 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="font-medium pl-2">
-                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              {entry.athleteName}
+                                              {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
+                                                <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                            </span>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
@@ -751,7 +772,14 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="font-medium pl-2">
-                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              {entry.athleteName}
+                                              {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
+                                                <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                            </span>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
@@ -805,7 +833,14 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="font-medium pl-2">
-                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : entry.athleteName}
+                                          {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
+                                            <span className="inline-flex items-center gap-1.5">
+                                              {entry.athleteName}
+                                              {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
+                                                <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                            </span>
+                                          )}
                                         </TableCell>
                                         <TableCell>
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>

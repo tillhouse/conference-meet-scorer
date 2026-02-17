@@ -5,7 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowUp, ArrowDown } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatTeamName } from "@/lib/utils";
+import { formatTeamName, formatName } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 interface Team {
   id: string;
@@ -21,6 +23,8 @@ interface MeetLineup {
   points: number | null;
   athlete: {
     id: string;
+    firstName?: string;
+    lastName?: string;
     team: {
       id: string;
     };
@@ -39,6 +43,8 @@ interface MeetTeam {
   relayScore: number;
   totalScore: number;
   team: Team;
+  testSpotAthleteIds?: string | null;
+  testSpotScoringAthleteId?: string | null;
 }
 
 interface RelayEntry {
@@ -50,6 +56,7 @@ interface RelayEntry {
 }
 
 interface TeamStandingsProps {
+  meetId?: string;
   meetTeams: MeetTeam[];
   meetLineups: MeetLineup[];
   relayEntries?: RelayEntry[];
@@ -75,12 +82,33 @@ type SortDirection = "asc" | "desc";
 type ViewMode = "standard" | "advanced" | "dailyGrid";
 type DailyGridSubView = "subScore" | "cumulative";
 
-export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null }: TeamStandingsProps) {
+export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null }: TeamStandingsProps) {
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [sortColumn, setSortColumn] = useState<SortColumn>("total");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [dailyGridSubView, setDailyGridSubView] = useState<DailyGridSubView>("subScore");
+
+  const athleteIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    meetLineups.forEach((l) => {
+      const a = l.athlete;
+      if (a?.id && (a.firstName != null || a.lastName != null)) {
+        map.set(a.id, formatName(a.firstName ?? "", a.lastName ?? ""));
+      }
+    });
+    return map;
+  }, [meetLineups]);
+
+  const pointsByAthleteId = useMemo(() => {
+    const map = new Map<string, number>();
+    meetLineups.forEach((l) => {
+      const current = map.get(l.athleteId) ?? 0;
+      map.set(l.athleteId, current + (l.points ?? 0));
+    });
+    return map;
+  }, [meetLineups]);
 
   // Reset sort to total when switching views
   useEffect(() => {
@@ -502,12 +530,16 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
               <div className="font-semibold text-xs text-slate-600 text-right">Points Behind</div>
             </div>
             {sortedTeams.map((meetTeam, index) => {
-              // Calculate points behind first place
               const firstPlaceScore = sortedTeams[0]?.totalScore || 0;
-              const pointsBehind = index === 0 
-                ? null 
-                : firstPlaceScore - meetTeam.totalScore;
-              
+              const pointsBehind = index === 0 ? null : firstPlaceScore - meetTeam.totalScore;
+              const testSpotIds: string[] = meetTeam.testSpotAthleteIds
+                ? (typeof meetTeam.testSpotAthleteIds === "string"
+                    ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
+                    : meetTeam.testSpotAthleteIds)
+                : [];
+              const hasTestSpot = testSpotIds.length > 0;
+              const scoringId = meetTeam.testSpotScoringAthleteId ?? testSpotIds[0];
+
               return (
                 <div
                   key={meetTeam.id}
@@ -515,8 +547,65 @@ export function TeamStandings({ meetTeams, meetLineups, relayEntries = [], durat
                   style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}
                 >
                   <div className="font-bold text-sm">{index + 1}</div>
-                  <div className="font-semibold text-sm" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
-                    {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm" style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}>
+                      {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                    </div>
+                    {hasTestSpot && meetId && (
+                      <div className="mt-1 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">Test spot:</span>
+                          {testSpotIds.length > 1 ? (
+                            <Select
+                              value={scoringId ?? ""}
+                              onValueChange={async (val) => {
+                                try {
+                                  const res = await fetch(
+                                    `/api/meets/${meetId}/rosters/${meetTeam.teamId}/scoring-athlete`,
+                                    {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ scoringAthleteId: val }),
+                                    }
+                                  );
+                                  if (!res.ok) throw new Error((await res.json()).error);
+                                  toast.success("Scoring athlete updated");
+                                  router.refresh();
+                                } catch (e) {
+                                  toast.error(e instanceof Error ? e.message : "Failed to update");
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-[140px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {testSpotIds.map((id) => (
+                                  <SelectItem key={id} value={id}>
+                                    {athleteIdToName.get(id) ?? id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <span className="text-xs text-slate-600">
+                              {scoringId ? athleteIdToName.get(scoringId) ?? scoringId : "—"}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Projected pts:{" "}
+                          {[...testSpotIds]
+                            .sort((a, b) => (pointsByAthleteId.get(b) ?? 0) - (pointsByAthleteId.get(a) ?? 0))
+                            .map((id) => {
+                              const name = athleteIdToName.get(id) ?? id;
+                              const pts = pointsByAthleteId.get(id) ?? 0;
+                              return `${name} ${pts.toFixed(1)}`;
+                            })
+                            .join(", ")}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="text-right font-medium text-sm">{meetTeam.individualScore.toFixed(1)}</div>
                   <div className="text-right font-medium text-sm">{meetTeam.relayScore.toFixed(1)}</div>
