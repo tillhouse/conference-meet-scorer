@@ -49,7 +49,7 @@ export function MeetSetupNav({ meetId, currentStep, meetName }: MeetSetupNavProp
         className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-white/60 hover:text-slate-900"
       >
         <LayoutDashboard className="h-4 w-4 shrink-0" />
-        Meet dashboard
+        Meet Dashboard
       </Link>
     </nav>
   );

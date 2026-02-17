@@ -21,6 +21,16 @@ import {
 } from "@/components/ui/select";
 import { ArrowUpDown, ArrowUp, ArrowDown, X, ChevronDown, ChevronRight } from "lucide-react";
 import { formatName, normalizeTimeFormat, parseTimeToSeconds, formatTeamName } from "@/lib/utils";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+
+interface MeetTeamSensitivity {
+  teamId: string;
+  sensitivityAthleteId?: string | null;
+  sensitivityVariant?: string | null;
+  sensitivityPercent?: number | null;
+  team?: { name?: string; schoolName?: string | null };
+}
 
 interface MeetLineup {
   id: string;
@@ -30,6 +40,10 @@ interface MeetLineup {
   seedTimeSeconds: number | null;
   place: number | null;
   points: number | null;
+  sensitivityPlaceBetter?: number | null;
+  sensitivityPointsBetter?: number | null;
+  sensitivityPlaceWorse?: number | null;
+  sensitivityPointsWorse?: number | null;
   athlete: {
     id: string;
     firstName: string;
@@ -93,6 +107,9 @@ interface MeetAthleteSummaryTableProps {
   scoringPlaces: number;
   /** Athlete IDs in the test spot (show "Test" badge) */
   testSpotAthleteIds?: string[];
+  /** Meet teams with sensitivity (for variant-specific points and scenario toggle) */
+  meetTeams?: MeetTeamSensitivity[];
+  meetId?: string;
 }
 
 type SortField = "name" | "team" | "year" | "totalPoints" | "individualEvents" | "relayEvents";
@@ -135,8 +152,16 @@ export function MeetAthleteSummaryTable({
   relayScoring,
   scoringPlaces,
   testSpotAthleteIds = [],
+  meetTeams = [],
+  meetId,
 }: MeetAthleteSummaryTableProps) {
   const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
+  const meetTeamsByTeamId = useMemo(() => {
+    const m = new Map<string, MeetTeamSensitivity>();
+    meetTeams.forEach((mt) => m.set(mt.teamId, mt));
+    return m;
+  }, [meetTeams]);
+  const router = useRouter();
   // Filter state
   const [nameFilter, setNameFilter] = useState("");
   const [teamFilter, setTeamFilter] = useState<string>("all");
@@ -254,9 +279,21 @@ export function MeetAthleteSummaryTable({
         if (place === 0) place = sorted.length; // Handle case where not found
       }
 
-      // Calculate points
+      // Calculate points (use sensitivity variant when applicable)
+      const teamId = lineup.athlete.team.id;
+      const meetTeam = meetTeamsByTeamId.get(teamId);
+      const useSensitivityVariant =
+        meetTeam?.sensitivityAthleteId &&
+        lineup.athleteId === meetTeam.sensitivityAthleteId &&
+        (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
       let points = 0;
-      if (place !== null && place <= scoringPlaces) {
+      if (useSensitivityVariant && meetTeam.sensitivityVariant === "better" && lineup.sensitivityPointsBetter != null) {
+        points = lineup.sensitivityPointsBetter;
+        if (lineup.sensitivityPlaceBetter != null) place = lineup.sensitivityPlaceBetter;
+      } else if (useSensitivityVariant && meetTeam.sensitivityVariant === "worse" && lineup.sensitivityPointsWorse != null) {
+        points = lineup.sensitivityPointsWorse;
+        if (lineup.sensitivityPlaceWorse != null) place = lineup.sensitivityPlaceWorse;
+      } else if (place !== null && place <= scoringPlaces) {
         if (lineup.points !== null) {
           points = lineup.points;
         } else {
@@ -340,7 +377,7 @@ export function MeetAthleteSummaryTable({
     });
 
     return Array.from(summariesMap.values());
-  }, [meetLineups, relayEntries, individualScoring, relayScoring, scoringPlaces]);
+  }, [meetLineups, relayEntries, individualScoring, relayScoring, scoringPlaces, meetTeamsByTeamId]);
 
   // Event grid: only individual and diving events (no relays)
   const gridEvents = useMemo(
@@ -495,6 +532,50 @@ export function MeetAthleteSummaryTable({
 
   return (
     <div className="space-y-4 [&_table_th]:h-8 [&_table_th]:px-1.5 [&_table_th]:text-xs [&_table_td]:py-1.5 [&_table_td]:px-1.5 [&_table_td]:text-xs">
+      {/* Sensitivity scenario toggle */}
+      {meetId && meetTeams.filter((mt) => mt.sensitivityAthleteId).length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-medium text-slate-600">Sensitivity scenario:</span>
+          {meetTeams
+            .filter((mt) => mt.sensitivityAthleteId)
+            .map((mt) => {
+              const sensVariant = mt.sensitivityVariant ?? "baseline";
+              const sensPercent = mt.sensitivityPercent ?? 1;
+              const teamName = mt.team ? formatTeamName(mt.team.name ?? "", mt.team.schoolName) : mt.teamId;
+              return (
+                <div key={mt.teamId} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-500">{teamName}:</span>
+                  <Select
+                    value={sensVariant}
+                    onValueChange={async (val: "baseline" | "better" | "worse") => {
+                      try {
+                        const res = await fetch(`/api/meets/${meetId}/rosters/${mt.teamId}/sensitivity-variant`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ variant: val }),
+                        });
+                        if (!res.ok) throw new Error((await res.json()).error);
+                        toast.success("Sensitivity variant updated");
+                        router.refresh();
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : "Failed to update");
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs w-[130px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="baseline">Baseline</SelectItem>
+                      <SelectItem value="better">Better ({sensPercent}%)</SelectItem>
+                      <SelectItem value="worse">Worse ({sensPercent}%)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })}
+        </div>
+      )}
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-end p-4 bg-slate-50 rounded-md border">
         <div className="flex-1 min-w-[200px]">

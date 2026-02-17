@@ -11,7 +11,8 @@ import {
   LayoutDashboard,
   BarChart3,
   UserCheck,
-  Upload
+  Upload,
+  Beaker
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -71,6 +72,11 @@ export function MeetNavigation({ meetId, status }: MeetNavigationProps) {
       href: `/meets/${meetId}/events`,
       label: "Event Results",
       icon: BarChart3,
+    },
+    {
+      href: `/meets/${meetId}/analysis`,
+      label: "Analysis Results",
+      icon: Beaker,
     },
   ];
 

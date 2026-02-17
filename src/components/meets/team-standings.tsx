@@ -45,6 +45,14 @@ interface MeetTeam {
   team: Team;
   testSpotAthleteIds?: string | null;
   testSpotScoringAthleteId?: string | null;
+  sensitivityAthleteId?: string | null;
+  sensitivityPercent?: number | null;
+  sensitivityVariant?: string | null;
+  sensitivityTotalScoreBetter?: number | null;
+  sensitivityTotalScoreWorse?: number | null;
+  sensitivityAthletePointsBaseline?: number | null;
+  sensitivityAthletePointsBetter?: number | null;
+  sensitivityAthletePointsWorse?: number | null;
 }
 
 interface RelayEntry {
@@ -530,8 +538,15 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
               <div className="font-semibold text-xs text-slate-600 text-right">Points Behind</div>
             </div>
             {sortedTeams.map((meetTeam, index) => {
-              const firstPlaceScore = sortedTeams[0]?.totalScore || 0;
-              const pointsBehind = index === 0 ? null : firstPlaceScore - meetTeam.totalScore;
+              const getDisplayedTotal = (mt: MeetTeam) => {
+                const v = mt.sensitivityVariant ?? "baseline";
+                if (v === "better" && mt.sensitivityTotalScoreBetter != null) return mt.sensitivityTotalScoreBetter;
+                if (v === "worse" && mt.sensitivityTotalScoreWorse != null) return mt.sensitivityTotalScoreWorse;
+                return mt.totalScore;
+              };
+              const displayedTotal = getDisplayedTotal(meetTeam);
+              const firstPlaceScore = Math.max(...sortedTeams.map((t) => getDisplayedTotal(t)), 0);
+              const pointsBehind = index === 0 ? null : firstPlaceScore - displayedTotal;
               const testSpotIds: string[] = meetTeam.testSpotAthleteIds
                 ? (typeof meetTeam.testSpotAthleteIds === "string"
                     ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
@@ -539,6 +554,12 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                 : [];
               const hasTestSpot = testSpotIds.length > 0;
               const scoringId = meetTeam.testSpotScoringAthleteId ?? testSpotIds[0];
+              const hasSensitivity = !!(
+                meetTeam.sensitivityAthleteId &&
+                (meetTeam.sensitivityTotalScoreBetter != null || meetTeam.sensitivityTotalScoreWorse != null)
+              );
+              const sensPercent = meetTeam.sensitivityPercent ?? 1;
+              const sensVariant = meetTeam.sensitivityVariant ?? "baseline";
 
               return (
                 <div
@@ -606,12 +627,58 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                         </div>
                       </div>
                     )}
+                    {hasSensitivity && meetId && (
+                      <div className="mt-1 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">Sensitivity:</span>
+                          <Select
+                            value={sensVariant}
+                            onValueChange={async (val: "baseline" | "better" | "worse") => {
+                              try {
+                                const res = await fetch(
+                                  `/api/meets/${meetId}/rosters/${meetTeam.teamId}/sensitivity-variant`,
+                                  {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ variant: val }),
+                                  }
+                                );
+                                if (!res.ok) throw new Error((await res.json()).error);
+                                toast.success("Sensitivity variant updated");
+                                router.refresh();
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : "Failed to update");
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="baseline">Baseline</SelectItem>
+                              <SelectItem value="better">Better ({sensPercent}%)</SelectItem>
+                              <SelectItem value="worse">Worse ({sensPercent}%)</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          Sensitivity athlete:{" "}
+                          {athleteIdToName.get(meetTeam.sensitivityAthleteId ?? "") ?? meetTeam.sensitivityAthleteId ?? "—"}
+                          {" · "}
+                          Baseline {(meetTeam.sensitivityAthletePointsBaseline ?? null) != null ? `${meetTeam.sensitivityAthletePointsBaseline!.toFixed(1)} pts` : "—"}
+                          {" · "}
+                          Better ({sensPercent}%) {(meetTeam.sensitivityAthletePointsBetter ?? null) != null ? `${meetTeam.sensitivityAthletePointsBetter!.toFixed(1)} pts` : "—"}
+                          {" · "}
+                          Worse ({sensPercent}%) {(meetTeam.sensitivityAthletePointsWorse ?? null) != null ? `${meetTeam.sensitivityAthletePointsWorse!.toFixed(1)} pts` : "—"}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="text-right font-medium text-sm">{meetTeam.individualScore.toFixed(1)}</div>
                   <div className="text-right font-medium text-sm">{meetTeam.relayScore.toFixed(1)}</div>
                   <div className="text-right font-medium text-sm">{meetTeam.divingScore.toFixed(1)}</div>
                   <div className="text-right font-bold text-sm">
-                    {meetTeam.totalScore.toFixed(1)}
+                    {displayedTotal.toFixed(1)}
                   </div>
                   <div className="text-right font-medium text-sm text-slate-600">
                     {pointsBehind === null ? "-" : pointsBehind.toFixed(1)}

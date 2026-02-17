@@ -350,6 +350,121 @@ export async function POST(
         where: { id: meetTeam.id },
         data: updateData,
       });
+
+      // Sensitivity analysis: compute better/worse team totals for this team's sensitivity athlete
+      const sensAthleteId = (meetTeam as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
+      const sensPct = (meetTeam as { sensitivityPercent?: number | null }).sensitivityPercent;
+      if (sensAthleteId && sensPct != null && sensPct > 0) {
+        const sensitivityLineups = await prisma.meetLineup.findMany({
+          where: { meetId },
+          include: { athlete: true, event: true },
+        });
+        const sensAthleteLineups = sensitivityLineups.filter((l) => l.athleteId === sensAthleteId && l.athlete.teamId === meetTeam.teamId);
+        if (sensAthleteLineups.length === 0) {
+          await prisma.meetTeam.update({
+            where: { id: meetTeam.id },
+            data: {
+              sensitivityTotalScoreBetter: null,
+              sensitivityTotalScoreWorse: null,
+              sensitivityAthletePointsBaseline: null,
+              sensitivityAthletePointsBetter: null,
+              sensitivityAthletePointsWorse: null,
+            } as Record<string, unknown>,
+          });
+          // Clear any previously set sensitivity place/points on this team's lineups
+          await prisma.meetLineup.updateMany({
+            where: { meetId, athleteId: sensAthleteId },
+            data: {
+              sensitivityPlaceBetter: null,
+              sensitivityPointsBetter: null,
+              sensitivityPlaceWorse: null,
+              sensitivityPointsWorse: null,
+            } as Record<string, unknown>,
+          });
+        } else {
+          const pct = sensPct / 100;
+          let athletePointsBaseline = 0;
+          let athletePointsBetter = 0;
+          let athletePointsWorse = 0;
+          const lineupsByEventSens: Record<string, typeof sensitivityLineups> = {};
+          sensitivityLineups.forEach((l) => {
+            if (!lineupsByEventSens[l.eventId]) lineupsByEventSens[l.eventId] = [];
+            lineupsByEventSens[l.eventId].push(l);
+          });
+          const getTime = (l: { overrideTimeSeconds?: number | null; seedTimeSeconds?: number | null; overrideTime?: string | null; seedTime?: string | null }) => {
+            const sec = l.overrideTimeSeconds ?? l.seedTimeSeconds;
+            if (sec != null) return sec;
+            const str = l.overrideTime ?? l.seedTime;
+            return str ? parseTimeToSeconds(str) : 0;
+          };
+          const lineupUpdates: { id: string; sensitivityPlaceBetter: number; sensitivityPointsBetter: number; sensitivityPlaceWorse: number; sensitivityPointsWorse: number }[] = [];
+          for (const lineup of sensAthleteLineups) {
+            athletePointsBaseline += lineup.points ?? 0;
+            const eventType = lineup.event.eventType;
+            const eventLineups = lineupsByEventSens[lineup.eventId] ?? [];
+            const baseTime = getTime(lineup);
+            const isDiving = eventType === "diving";
+            const betterTime = isDiving ? baseTime * (1 + pct) : baseTime * (1 - pct);
+            const worseTime = isDiving ? baseTime * (1 - pct) : baseTime * (1 + pct);
+            let sensitivityPlaceBetter = 0;
+            let sensitivityPointsBetter = 0;
+            let sensitivityPlaceWorse = 0;
+            let sensitivityPointsWorse = 0;
+            for (const variant of ["better", "worse"] as const) {
+              const substituteTime = variant === "better" ? betterTime : worseTime;
+              const sorted = [...eventLineups].map((l) => ({
+                ...l,
+                _sortTime: l.id === lineup.id ? substituteTime : getTime(l),
+              }));
+              sorted.sort((a, b) => {
+                if (isDiving) return b._sortTime - a._sortTime;
+                return a._sortTime - b._sortTime;
+              });
+              const place = sorted.findIndex((x) => x.id === lineup.id) + 1;
+              const pts = place <= meet.scoringPlaces ? (individualScoring[place.toString()] || 0) : 0;
+              if (variant === "better") {
+                athletePointsBetter += pts;
+                sensitivityPlaceBetter = place;
+                sensitivityPointsBetter = pts;
+              } else {
+                athletePointsWorse += pts;
+                sensitivityPlaceWorse = place;
+                sensitivityPointsWorse = pts;
+              }
+            }
+            lineupUpdates.push({
+              id: lineup.id,
+              sensitivityPlaceBetter,
+              sensitivityPointsBetter,
+              sensitivityPlaceWorse,
+              sensitivityPointsWorse,
+            });
+          }
+          const totalScoreBetter = totalScore - athletePointsBaseline + athletePointsBetter;
+          const totalScoreWorse = totalScore - athletePointsBaseline + athletePointsWorse;
+          await prisma.meetTeam.update({
+            where: { id: meetTeam.id },
+            data: {
+              sensitivityTotalScoreBetter: totalScoreBetter,
+              sensitivityTotalScoreWorse: totalScoreWorse,
+              sensitivityAthletePointsBaseline: athletePointsBaseline,
+              sensitivityAthletePointsBetter: athletePointsBetter,
+              sensitivityAthletePointsWorse: athletePointsWorse,
+            } as Record<string, unknown>,
+          });
+          for (const u of lineupUpdates) {
+            await prisma.meetLineup.update({
+              where: { id: u.id },
+              data: {
+                sensitivityPlaceBetter: u.sensitivityPlaceBetter,
+                sensitivityPointsBetter: u.sensitivityPointsBetter,
+                sensitivityPlaceWorse: u.sensitivityPlaceWorse,
+                sensitivityPointsWorse: u.sensitivityPointsWorse,
+              } as Record<string, unknown>,
+            });
+          }
+        }
+      }
     }
 
     return NextResponse.json({

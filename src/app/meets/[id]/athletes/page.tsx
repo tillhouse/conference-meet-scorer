@@ -19,7 +19,9 @@ export default async function MeetAthletesPage({
     where: { id },
     include: {
       meetTeams: {
-        select: { testSpotAthleteIds: true },
+        include: {
+          team: { select: { id: true, name: true, schoolName: true, primaryColor: true } },
+        },
       },
       meetLineups: {
         include: {
@@ -123,6 +125,14 @@ export default async function MeetAthletesPage({
             relayScoring={relayScoring}
             scoringPlaces={meet.scoringPlaces}
             testSpotAthleteIds={testSpotAthleteIds}
+            meetId={id}
+            meetTeams={meet.meetTeams.map((mt) => ({
+              teamId: mt.teamId,
+              sensitivityAthleteId: (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId,
+              sensitivityVariant: (mt as { sensitivityVariant?: string | null }).sensitivityVariant,
+              sensitivityPercent: (mt as { sensitivityPercent?: number | null }).sensitivityPercent,
+              team: mt.team,
+            }))}
           />
         </CardContent>
       </Card>

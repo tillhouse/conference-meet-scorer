@@ -302,6 +302,16 @@ model MeetTeam {
   testSpotAthleteIds      String? // JSON: ["id1", "id2", "id3"]
   testSpotScoringAthleteId String? // which test-spot athlete's points count
 
+  // Sensitivity analysis: one athlete, X% better/worse scenarios
+  sensitivityAthleteId     String?  // athlete to vary (must be in selectedAthletes)
+  sensitivityPercent       Float?   // e.g. 1 or 2
+  sensitivityVariant       String?  // "baseline" | "better" | "worse" (which scenario is displayed)
+  sensitivityTotalScoreBetter Float? // team total if athlete performed X% better
+  sensitivityTotalScoreWorse  Float? // team total if athlete performed X% worse
+  sensitivityAthletePointsBaseline Float? // sensitivity athlete's points in baseline scenario
+  sensitivityAthletePointsBetter  Float? // sensitivity athlete's points in better scenario
+  sensitivityAthletePointsWorse   Float? // sensitivity athlete's points in worse scenario
+
   // Pre-calculated scores for quick display
   individualScore Float @default(0)
   relayScore      Float @default(0)
@@ -336,6 +346,11 @@ model MeetLineup {
   finalTimeSeconds Float?
   place           Int?
   points          Float?
+  // Sensitivity: better/worse scenario place and points (only for team's sensitivity athlete)
+  sensitivityPlaceBetter  Int?
+  sensitivityPointsBetter Float?
+  sensitivityPlaceWorse   Int?
+  sensitivityPointsWorse  Float?
 
   meet    Meet    @relation(fields: [meetId], references: [id], onDelete: Cascade)
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)

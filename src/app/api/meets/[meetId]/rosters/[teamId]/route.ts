@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
+import path from "path";
+import fs from "fs";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+
+const DEBUG_LOG = (payload: Record<string, unknown>) => {
+  fetch("http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, timestamp: Date.now() }),
+  }).catch(() => {});
+};
 
 const saveRosterSchema = z.object({
   athleteIds: z.array(z.string()),
   testSpotAthleteIds: z.array(z.string()).optional(),
   testSpotScoringAthleteId: z.string().optional(),
+  sensitivityAthleteId: z.string().nullish(),
+  sensitivityPercent: z.number().min(0.5).max(10).optional(),
 });
 
 export async function GET(
@@ -38,11 +50,18 @@ export async function GET(
       ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
       : [];
     const testSpotScoringAthleteId = meetTeam.testSpotScoringAthleteId ?? null;
+    const mt = meetTeam as { sensitivityAthleteId?: string | null; sensitivityPercent?: number | null; sensitivityVariant?: string | null };
+    const sensitivityAthleteId = mt.sensitivityAthleteId ?? null;
+    const sensitivityPercent = mt.sensitivityPercent ?? null;
+    const sensitivityVariant = mt.sensitivityVariant ?? null;
 
     return NextResponse.json({
       athleteIds,
       testSpotAthleteIds,
       testSpotScoringAthleteId,
+      sensitivityAthleteId,
+      sensitivityPercent,
+      sensitivityVariant,
     });
   } catch (error) {
     console.error("Error fetching roster:", error);
@@ -60,7 +79,20 @@ export async function POST(
   try {
     const { meetId, teamId } = await params;
     const body = await request.json();
-    const data = saveRosterSchema.parse(body);
+    // #region agent log
+    DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-body", message: "Roster POST body before parse", data: { bodyKeys: Object.keys(body), sensitivityAthleteId: body.sensitivityAthleteId, sensitivityPercent: body.sensitivityPercent }, timestamp: Date.now(), hypothesisId: "H1" });
+    // #endregion
+    let data: z.infer<typeof saveRosterSchema>;
+    try {
+      data = saveRosterSchema.parse(body);
+    } catch (parseError) {
+      // #region agent log
+      if (parseError instanceof z.ZodError) {
+        DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-zod", message: "Zod parse failed", data: { issues: parseError.issues, firstMessage: parseError.issues[0]?.message }, timestamp: Date.now(), hypothesisId: "H1" });
+      }
+      // #endregion
+      throw parseError;
+    }
 
     // Verify meet and team exist
     const meet = await prisma.meet.findUnique({
@@ -128,6 +160,18 @@ export async function POST(
       }
     }
 
+    // Sensitivity: athlete must be on roster; clear if not
+    const sensitivityAthleteId = data.sensitivityAthleteId ?? null;
+    const sensitivityPercent = data.sensitivityPercent ?? null;
+    if (sensitivityAthleteId !== null) {
+      if (!athleteIdSet.has(sensitivityAthleteId)) {
+        return NextResponse.json(
+          { error: "sensitivityAthleteId must be one of athleteIds" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Scoring roster = everyone except test-spot candidates, plus the one scoring test-spot athlete
     const scoringAthleteIds = data.athleteIds.filter((id) => !testSpotSet.has(id) || id === testSpotScoringAthleteId);
     const scoringAthletes = athletes.filter((a) => scoringAthleteIds.includes(a.id));
@@ -145,17 +189,57 @@ export async function POST(
     }
 
     // Save the roster selection to MeetTeam
-    const updateData: {
-      selectedAthletes: string;
-      testSpotAthleteIds: string | null;
-      testSpotScoringAthleteId: string | null;
-    } = {
+    const updateData: Record<string, unknown> = {
       selectedAthletes: JSON.stringify(data.athleteIds),
       testSpotAthleteIds: testSpotAthleteIds.length > 0 ? JSON.stringify(testSpotAthleteIds) : null,
       testSpotScoringAthleteId: testSpotAthleteIds.length > 0 ? testSpotScoringAthleteId : null,
+      sensitivityAthleteId: sensitivityAthleteId ?? null,
+      sensitivityPercent: sensitivityPercent ?? null,
+      sensitivityVariant: sensitivityAthleteId != null ? ((meetTeam as { sensitivityVariant?: string | null }).sensitivityVariant ?? "baseline") : null,
     };
+    if (sensitivityAthleteId == null) {
+      updateData.sensitivityTotalScoreBetter = null;
+      updateData.sensitivityTotalScoreWorse = null;
+      updateData.sensitivityAthletePointsBaseline = null;
+      updateData.sensitivityAthletePointsBetter = null;
+      updateData.sensitivityAthletePointsWorse = null;
+    }
+
+    // #region agent log
+    let clientSchemaHasSensitivity = false;
+    try {
+      const clientSchemaPath = path.join(process.cwd(), "node_modules", ".prisma", "client", "schema.prisma");
+      const clientSchema = fs.readFileSync(clientSchemaPath, "utf-8");
+      clientSchemaHasSensitivity = clientSchema.includes("sensitivityAthleteId");
+    } catch {
+      // ignore
+    }
+    DEBUG_LOG({
+      location: "rosters/[teamId]/route.ts:before-update",
+      message: "MeetTeam update payload and client state",
+      hypothesisId: "H1",
+      runId: "roster-save",
+      data: {
+        prismaClientPath: require.resolve("@prisma/client"),
+        updatePayloadKeys: Object.keys(updateData),
+        clientSchemaHasSensitivity,
+      },
+    });
+    // #endregion
+
+    if (!clientSchemaHasSensitivity && (sensitivityAthleteId != null || sensitivityPercent != null)) {
+      return NextResponse.json(
+        {
+          error:
+            "Prisma client is out of date. Stop the dev server, then run: npx prisma generate && npx prisma db push. Restart the dev server.",
+          details: "Generated client does not include sensitivity fields. Regenerate with the server stopped.",
+        },
+        { status: 503 }
+      );
+    }
 
     try {
+      const previousSensAthleteId = (meetTeam as { sensitivityAthleteId?: string | null }).sensitivityAthleteId ?? null;
       await prisma.meetTeam.update({
         where: {
           meetId_teamId: {
@@ -163,16 +247,35 @@ export async function POST(
             teamId,
           },
         },
-        data: updateData,
+        data: updateData as Parameters<typeof prisma.meetTeam.update>[0]["data"],
       });
+      if (sensitivityAthleteId == null && previousSensAthleteId) {
+        await prisma.meetLineup.updateMany({
+          where: { meetId, athleteId: previousSensAthleteId },
+          data: {
+            sensitivityPlaceBetter: null,
+            sensitivityPointsBetter: null,
+            sensitivityPlaceWorse: null,
+            sensitivityPointsWorse: null,
+          },
+        });
+      }
     } catch (updateError: any) {
       console.error("Error updating MeetTeam:", updateError);
+      // #region agent log
+      DEBUG_LOG({
+        location: "rosters/[teamId]/route.ts:update-catch",
+        message: "MeetTeam.update failed",
+        hypothesisId: "H1",
+        runId: "roster-save",
+        data: { errorMessage: updateError?.message ?? String(updateError) },
+      });
+      // #endregion
       // If selectedAthletes field doesn't exist yet, try without it first
       if (updateError.message?.includes("Unknown argument") || updateError.message?.includes("selectedAthletes")) {
-        // Field might not exist in Prisma client yet - need to regenerate
         return NextResponse.json(
           {
-            error: "Database schema needs to be updated. Please regenerate Prisma client.",
+            error: "Prisma client is out of date. Stop the dev server, then run: npx prisma generate && npx prisma db push. Restart the dev server.",
             details: updateError.message,
           },
           { status: 500 }

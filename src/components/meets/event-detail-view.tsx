@@ -21,10 +21,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatName, formatTeamName, formatTeamRelayLabel, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
+import { formatName, formatTeamName, formatTeamRelayLabel, normalizeTimeFormat, parseTimeToSeconds, formatSecondsToTime } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+
+interface MeetTeamSensitivity {
+  teamId: string;
+  sensitivityAthleteId?: string | null;
+  sensitivityVariant?: string | null;
+  sensitivityPercent?: number | null;
+  team?: { name?: string; schoolName?: string | null };
+}
 
 interface MeetLineup {
   id: string;
@@ -36,6 +45,10 @@ interface MeetLineup {
   overrideTimeSeconds: number | null;
   place: number | null;
   points: number | null;
+  sensitivityPlaceBetter?: number | null;
+  sensitivityPointsBetter?: number | null;
+  sensitivityPlaceWorse?: number | null;
+  sensitivityPointsWorse?: number | null;
   athlete: {
     id: string;
     firstName: string;
@@ -109,6 +122,8 @@ interface EventDetailViewProps {
   meetId: string;
   /** Athlete IDs in the test spot (show "Test" badge next to name) */
   testSpotAthleteIds?: string[];
+  /** Meet teams with sensitivity fields (for variant-specific place/points and scenario toggle) */
+  meetTeams?: MeetTeamSensitivity[];
 }
 
 interface TeamEventStats {
@@ -129,6 +144,8 @@ interface TeamEventStats {
         place: number | null;
         points: number;
         time: string | null;
+        /** When set, show this instead of time (e.g. sensitivity-adjusted time) */
+        displayTime?: string | null;
         teamName?: string;
         teamColor?: string | null;
         /** Relay shorthand for Relay column (e.g. "PRIN") */
@@ -152,8 +169,14 @@ export function EventDetailView({
   hasResults,
   meetId,
   testSpotAthleteIds = [],
+  meetTeams = [],
 }: EventDetailViewProps) {
   const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
+  const meetTeamsByTeamId = useMemo(() => {
+    const m = new Map<string, MeetTeamSensitivity>();
+    meetTeams.forEach((mt) => m.set(mt.teamId, mt));
+    return m;
+  }, [meetTeams]);
   const router = useRouter();
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingTimes, setEditingTimes] = useState<Map<string, string>>(new Map());
@@ -212,18 +235,33 @@ export function EventDetailView({
       }
     });
 
-    // Calculate places and points
+    // Calculate places and points (use sensitivity variant place/points when applicable)
     sortedLineups.forEach((lineup, index) => {
-      const place = lineup.place !== null ? lineup.place : index + 1;
-      let points = 0;
-
-      if (lineup.points !== null) {
-        points = lineup.points;
-      } else if (place <= scoringPlaces) {
-        points = individualScoring[place.toString()] || 0;
+      const teamId = lineup.athlete.team.id;
+      const meetTeam = meetTeamsByTeamId.get(teamId);
+      const useSensitivityVariant =
+        meetTeam?.sensitivityAthleteId &&
+        lineup.athleteId === meetTeam.sensitivityAthleteId &&
+        (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
+      let place: number;
+      let points: number;
+      if (useSensitivityVariant && meetTeam.sensitivityVariant === "better" && lineup.sensitivityPlaceBetter != null && lineup.sensitivityPointsBetter != null) {
+        place = lineup.sensitivityPlaceBetter;
+        points = lineup.sensitivityPointsBetter;
+      } else if (useSensitivityVariant && meetTeam.sensitivityVariant === "worse" && lineup.sensitivityPlaceWorse != null && lineup.sensitivityPointsWorse != null) {
+        place = lineup.sensitivityPlaceWorse;
+        points = lineup.sensitivityPointsWorse;
+      } else {
+        place = lineup.place !== null ? lineup.place : index + 1;
+        if (lineup.points !== null) {
+          points = lineup.points;
+        } else if (place <= scoringPlaces) {
+          points = individualScoring[place.toString()] || 0;
+        } else {
+          points = 0;
+        }
       }
 
-      const teamId = lineup.athlete.team.id;
       const stats = statsMap.get(teamId);
       if (!stats) return;
 
@@ -240,13 +278,30 @@ export function EventDetailView({
 
       stats.athleteCount++;
       stats.totalPoints += points;
+      const baseTimeStr = getEffectiveTime(lineup);
+      let displayTime: string | null | undefined = undefined;
+      if (useSensitivityVariant && meetTeam && (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse")) {
+        const baseSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds ?? (baseTimeStr ? parseTimeToSeconds(baseTimeStr) : null);
+        if (baseSeconds != null) {
+          const pct = (meetTeam.sensitivityPercent ?? 1) / 100;
+          const isDiving = event.eventType === "diving";
+          let adjustedSeconds: number;
+          if (meetTeam.sensitivityVariant === "better") {
+            adjustedSeconds = isDiving ? baseSeconds * (1 + pct) : baseSeconds * (1 - pct);
+          } else {
+            adjustedSeconds = isDiving ? baseSeconds * (1 - pct) : baseSeconds * (1 + pct);
+          }
+          displayTime = formatSecondsToTime(Math.round(adjustedSeconds * 100) / 100, isDiving);
+        }
+      }
       stats.entries.push({
         athleteId: lineup.id,
         athleteName: formatName(lineup.athlete.firstName, lineup.athlete.lastName),
         realAthleteId: lineup.athlete.id,
         place,
         points,
-        time: getEffectiveTime(lineup),
+        time: baseTimeStr,
+        displayTime: displayTime ?? undefined,
         teamName: stats.teamName,
         teamColor: stats.teamColor,
         lineupId: lineup.id,
@@ -255,7 +310,7 @@ export function EventDetailView({
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime]);
+  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, meetTeamsByTeamId]);
 
   // Process relay entries if this is a relay event
   const relayTeamStats = useMemo(() => {
@@ -460,13 +515,14 @@ export function EventDetailView({
   );
 
   // Helper to render time cell (editable in edit mode)
-  const renderTimeCell = useCallback((entry: { lineupId?: string; time: string | null; hasOverride?: boolean }) => {
+  const renderTimeCell = useCallback((entry: { lineupId?: string; time: string | null; displayTime?: string | null; hasOverride?: boolean }) => {
+    const timeToShow = entry.displayTime ?? entry.time;
     if (!isEditMode || !entry.lineupId) {
       return (
         <div className="text-right font-mono tabular-nums">
-          {entry.time ? (
+          {timeToShow ? (
             <span className={entry.hasOverride ? "text-red-600" : ""}>
-              {normalizeTimeFormat(entry.time)}
+              {normalizeTimeFormat(timeToShow)}
             </span>
           ) : (
             "N/A"
@@ -499,12 +555,52 @@ export function EventDetailView({
         <TabsContent value="results" className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
                   <CardTitle>Event Results</CardTitle>
                   <CardDescription>
                     Complete list of all entries in this event, sorted by place
                   </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {meetTeams
+                      .filter((mt) => mt.sensitivityAthleteId)
+                      .map((mt) => {
+                        const sensVariant = mt.sensitivityVariant ?? "baseline";
+                        const sensPercent = mt.sensitivityPercent ?? 1;
+                        const teamName = mt.team ? formatTeamName(mt.team.name ?? "", mt.team.schoolName) : mt.teamId;
+                        return (
+                          <div key={mt.teamId} className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500 whitespace-nowrap">{teamName}:</span>
+                            <Select
+                              value={sensVariant}
+                              onValueChange={async (val: "baseline" | "better" | "worse") => {
+                                try {
+                                  const res = await fetch(`/api/meets/${meetId}/rosters/${mt.teamId}/sensitivity-variant`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ variant: val }),
+                                  });
+                                  if (!res.ok) throw new Error((await res.json()).error);
+                                  toast.success("Sensitivity variant updated");
+                                  router.refresh();
+                                } catch (e) {
+                                  toast.error(e instanceof Error ? e.message : "Failed to update");
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-8 text-xs w-[130px]">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="baseline">Baseline</SelectItem>
+                                <SelectItem value="better">Better ({sensPercent}%)</SelectItem>
+                                <SelectItem value="worse">Worse ({sensPercent}%)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        );
+                      })}
                 </div>
                 {!isEditMode ? (
                   <Button

@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle, Users, Beaker } from "lucide-react";
+import { CheckCircle2, AlertCircle, Users, Beaker, BarChart2 } from "lucide-react";
 import { formatName, formatTeamName } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -67,6 +67,9 @@ export function RosterSelector({
   const [includeTestSpot, setIncludeTestSpot] = useState(false);
   const [testSpotAthleteIds, setTestSpotAthleteIds] = useState<string[]>([]);
   const [testSpotScoringAthleteId, setTestSpotScoringAthleteId] = useState<string | null>(null);
+  const [includeSensitivity, setIncludeSensitivity] = useState(false);
+  const [sensitivityAthleteId, setSensitivityAthleteId] = useState<string | null>(null);
+  const [sensitivityPercent, setSensitivityPercent] = useState(1);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -90,6 +93,15 @@ export function RosterSelector({
           setIncludeTestSpot(false);
           setTestSpotAthleteIds([]);
           setTestSpotScoringAthleteId(null);
+        }
+        if (data.sensitivityAthleteId) {
+          setIncludeSensitivity(true);
+          setSensitivityAthleteId(data.sensitivityAthleteId);
+          setSensitivityPercent(typeof data.sensitivityPercent === "number" ? data.sensitivityPercent : 1);
+        } else {
+          setIncludeSensitivity(false);
+          setSensitivityAthleteId(null);
+          setSensitivityPercent(1);
         }
       })
       .catch(() => {
@@ -206,11 +218,22 @@ export function RosterSelector({
         athleteIds: string[];
         testSpotAthleteIds?: string[];
         testSpotScoringAthleteId?: string | null;
+        sensitivityAthleteId?: string | null;
+        sensitivityPercent?: number;
       } = { athleteIds: Array.from(selectedAthletes) };
       if (includeTestSpot && testSpotAthleteIds.length > 0 && testSpotScoringAthleteId) {
         body.testSpotAthleteIds = testSpotAthleteIds;
         body.testSpotScoringAthleteId = testSpotScoringAthleteId;
       }
+      if (includeSensitivity && sensitivityAthleteId && selectedAthletes.has(sensitivityAthleteId)) {
+        body.sensitivityAthleteId = sensitivityAthleteId;
+        body.sensitivityPercent = sensitivityPercent;
+      } else {
+        body.sensitivityAthleteId = null;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'roster-selector.tsx:before-fetch',message:'Roster save payload',data:{bodyKeys:Object.keys(body),sensitivityAthleteId:body.sensitivityAthleteId,sensitivityPercent:body.sensitivityPercent},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       const response = await fetch(`/api/meets/${meetId}/rosters/${meetTeam.teamId}`, {
         method: "POST",
         headers: {
@@ -221,7 +244,13 @@ export function RosterSelector({
 
       if (!response.ok) {
         const error = await response.json();
-        const errorDetails = error.details ? `: ${error.details}` : "";
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'roster-selector.tsx:error-response',message:'Roster save error',data:{errorMsg:error.error,detailsType:typeof error.details,detailsIsArray:Array.isArray(error.details),detailsLength:error.details?.length,firstIssue:error.details?.[0]},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+        // #endregion
+        const detailsStr = Array.isArray(error.details) && error.details.length > 0
+          ? error.details.map((d: { message?: string }) => d.message).filter(Boolean).join("; ")
+          : (typeof error.details === "string" ? error.details : "");
+        const errorDetails = detailsStr ? `: ${detailsStr}` : "";
         throw new Error((error.error || "Failed to save roster") + errorDetails);
       }
 
@@ -346,6 +375,77 @@ export function RosterSelector({
             Include a test spot (compare multiple athletes for one roster slot)
           </Label>
         </div>
+
+        {/* Sensitivity analysis checkbox */}
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="include-sensitivity"
+            checked={includeSensitivity}
+            onCheckedChange={(c) => {
+              const checked = c === true;
+              setIncludeSensitivity(checked);
+              if (!checked) {
+                setSensitivityAthleteId(null);
+                setSensitivityPercent(1);
+              }
+            }}
+          />
+          <Label
+            htmlFor="include-sensitivity"
+            className="text-sm font-medium cursor-pointer"
+          >
+            Sensitivity analysis (vary one athlete's performance by X%)
+          </Label>
+        </div>
+        {includeSensitivity && selectedAthletes.size > 0 && (
+          <div className="p-3 rounded-md bg-slate-50 border border-slate-200 space-y-3">
+            <p className="text-sm text-slate-700 flex items-center gap-2">
+              <BarChart2 className="h-4 w-4" />
+              See how team score changes if this athlete performs X% better or worse (faster/slower for swimmers, higher/lower score for divers).
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Athlete:</Label>
+                <Select
+                  value={sensitivityAthleteId ?? ""}
+                  onValueChange={(val) => setSensitivityAthleteId(val || null)}
+                >
+                  <SelectTrigger className="w-[200px] bg-white">
+                    <SelectValue placeholder="Select athlete" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableAthletes
+                      .filter((a) => selectedAthletes.has(a.id))
+                      .map((athlete) => (
+                        <SelectItem key={athlete.id} value={athlete.id}>
+                          {formatName(athlete.firstName, athlete.lastName)}
+                          {athlete.year && ` (${athlete.year})`}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Percent variation:</Label>
+                <Select
+                  value={String(sensitivityPercent)}
+                  onValueChange={(val) => setSensitivityPercent(Number(val))}
+                >
+                  <SelectTrigger className="w-[100px] bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 5, 10].map((p) => (
+                      <SelectItem key={p} value={String(p)}>
+                        {p}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Swimmers */}
         <div>
