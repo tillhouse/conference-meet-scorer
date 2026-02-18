@@ -72,20 +72,23 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    // Use meet/team from request or from session so follow-up messages keep context
+    const meetIdForContext = data.meetId ?? chatSession.meetId ?? null;
+    const teamIdForContext = data.teamId ?? chatSession.teamId ?? null;
+
     // Build context from meet/team if provided
-    let systemPrompt = `You are an expert swimming and diving coach assistant helping with meet strategy, lineup optimization, and team management. 
-You have deep knowledge of:
-- Swimming and diving meet formats (championship, dual, invitational)
-- Event limits and roster constraints
-- Scoring systems and point maximization
-- Athlete performance analysis
-- Strategic lineup decisions
+    let systemPrompt = `You are an expert swimming and diving coach assistant focused on meet strategy. You have full meet data when provided: standings, results (places and points), test spot comparisons, and sensitivity analysis (baseline vs better/worse).
 
-Be helpful, concise, and practical in your advice.`;
+Use this data to:
+- Suggest lineup and relay optimizations (who to put in which events, test spot tradeoffs).
+- Explain tradeoffs and risk: who is most at risk of losing points if they go slightly slower or score lower (sensitivity "worse"), and who is best positioned to gain points with a small improvement (sensitivity "better").
+- Reference concrete numbers from the context (team totals, individual points, places) when giving advice.
 
-    if (data.meetId) {
+Be concise, practical, and coach-oriented.`;
+
+    if (meetIdForContext) {
       const meet = await prisma.meet.findUnique({
-        where: { id: data.meetId },
+        where: { id: meetIdForContext },
         include: {
           meetTeams: {
             include: {
@@ -98,82 +101,65 @@ Be helpful, concise, and practical in your advice.`;
                 },
               },
             },
-            orderBy: {
-              totalScore: "desc",
-            },
+            orderBy: { totalScore: "desc" },
           },
           meetLineups: {
             include: {
               athlete: {
                 include: {
                   team: {
-                    select: {
-                      id: true,
-                      name: true,
-                      shortName: true,
-                    },
+                    select: { id: true, name: true },
                   },
                 },
               },
               event: {
-                select: {
-                  id: true,
-                  name: true,
-                  fullName: true,
-                  eventType: true,
-                },
+                select: { id: true, name: true, eventType: true },
               },
             },
           },
           relayEntries: {
             include: {
-              team: {
-                select: {
-                  id: true,
-                  name: true,
-                  shortName: true,
-                },
-              },
-              event: {
-                select: {
-                  id: true,
-                  name: true,
-                  fullName: true,
-                  eventType: true,
-                },
-              },
+              team: { select: { id: true, name: true } },
+              event: { select: { id: true, name: true } },
             },
           },
         },
       });
 
       if (meet) {
-        // Parse selected events
-        const selectedEvents = meet.selectedEvents
-          ? (JSON.parse(meet.selectedEvents) as string[])
-          : [];
+        const formatName = (first: string | null, last: string | null) =>
+          [first, last].filter(Boolean).join(" ").trim() || "—";
+        const athleteIdToName = new Map<string, string>();
+        meet.meetLineups.forEach((l) => {
+          const a = l.athlete;
+          if (a?.id)
+            athleteIdToName.set(a.id, formatName(a.firstName, a.lastName));
+        });
 
-        // Group lineups by event
+        const pointsByAthleteId = new Map<string, number>();
+        meet.meetLineups.forEach((l) => {
+          const cur = pointsByAthleteId.get(l.athleteId) ?? 0;
+          pointsByAthleteId.set(l.athleteId, cur + (l.points ?? 0));
+        });
+
         const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
         meet.meetLineups.forEach((lineup) => {
-          if (!lineupsByEvent[lineup.event.name]) {
-            lineupsByEvent[lineup.event.name] = [];
-          }
-          lineupsByEvent[lineup.event.name].push(lineup);
+          const key = lineup.event.name;
+          if (!lineupsByEvent[key]) lineupsByEvent[key] = [];
+          lineupsByEvent[key].push(lineup);
+        });
+        const relaysByEvent: Record<string, typeof meet.relayEntries> = {};
+        meet.relayEntries.forEach((relay) => {
+          const key = relay.event.name;
+          if (!relaysByEvent[key]) relaysByEvent[key] = [];
+          relaysByEvent[key].push(relay);
         });
 
-        // Group lineups by team
-        const lineupsByTeam: Record<string, typeof meet.meetLineups> = {};
-        meet.meetLineups.forEach((lineup) => {
-          const teamName = lineup.athlete.team.name;
-          if (!lineupsByTeam[teamName]) {
-            lineupsByTeam[teamName] = [];
-          }
-          lineupsByTeam[teamName].push(lineup);
-        });
+        const hasResults =
+          meet.meetLineups.some((l) => l.place != null) ||
+          meet.relayEntries.some((r) => r.place != null);
 
-        // Build detailed context
-        let meetContext = `\n\n=== CURRENT MEET CONTEXT ===
+        let meetContext = `\n\n=== MEET STRATEGY CONTEXT ===
 Meet: ${meet.name}
 Type: ${meet.meetType}
 Date: ${meet.date ? new Date(meet.date).toLocaleDateString() : "Not set"}
@@ -188,87 +174,116 @@ CONSTRAINTS:
 - Scoring Start Points: ${meet.scoringStartPoints}
 - Relay Multiplier: ${meet.relayMultiplier}x
 
-TEAMS PARTICIPATING (${meet.meetTeams.length}):`;
-
-        // Add team information
-        meet.meetTeams.forEach((meetTeam, index) => {
-          const teamLineups = lineupsByTeam[meetTeam.team.name] || [];
-          const athleteCount = meetTeam.selectedAthletes
-            ? (JSON.parse(meetTeam.selectedAthletes) as string[]).length
-            : 0;
-          
-          meetContext += `\n${index + 1}. ${meetTeam.team.name}${meetTeam.team.shortName ? ` (${meetTeam.team.shortName})` : ""}`;
-          meetContext += `\n   - Roster: ${athleteCount} athletes selected`;
-          meetContext += `\n   - Individual Entries: ${teamLineups.length} entries`;
-          meetContext += `\n   - Current Score: ${meetTeam.totalScore.toFixed(1)} points`;
+STANDINGS (by total score):`;
+        meet.meetTeams.forEach((mt, i) => {
+          meetContext += `\n${i + 1}. ${mt.team.name}${mt.team.shortName ? ` (${mt.team.shortName})` : ""}: ${mt.totalScore.toFixed(1)} pts`;
+          meetContext += ` (indiv: ${mt.individualScore.toFixed(1)}, diving: ${mt.divingScore.toFixed(1)}, relay: ${mt.relayScore.toFixed(1)})`;
         });
 
-        // Add event breakdown
-        meetContext += `\n\nEVENTS IN THIS MEET (${Object.keys(lineupsByEvent).length}):`;
-        Object.entries(lineupsByEvent).forEach(([eventName, lineups]) => {
-          meetContext += `\n- ${eventName}: ${lineups.length} entries`;
-          
-          // Show top 3 entries by seed time
-          const sortedLineups = [...lineups].sort((a, b) => {
-            const aTime = a.seedTimeSeconds ?? Infinity;
-            const bTime = b.seedTimeSeconds ?? Infinity;
-            return aTime - bTime;
-          });
-          
-          if (sortedLineups.length > 0 && sortedLineups[0].seedTime) {
-            meetContext += ` (Top: ${sortedLineups[0].athlete.firstName} ${sortedLineups[0].athlete.lastName} - ${sortedLineups[0].seedTime} from ${sortedLineups[0].athlete.team.name})`;
-          }
-        });
-
-        // Add relay information
-        if (meet.relayEntries.length > 0) {
-          meetContext += `\n\nRELAYS (${meet.relayEntries.length}):`;
-          const relaysByEvent: Record<string, typeof meet.relayEntries> = {};
-          meet.relayEntries.forEach((relay) => {
-            if (!relaysByEvent[relay.event.name]) {
-              relaysByEvent[relay.event.name] = [];
-            }
-            relaysByEvent[relay.event.name].push(relay);
-          });
-          
-          Object.entries(relaysByEvent).forEach(([eventName, relays]) => {
-            meetContext += `\n- ${eventName}: ${relays.length} teams`;
-            const sortedRelays = [...relays].sort((a, b) => {
-              const aTime = a.seedTimeSeconds ?? Infinity;
-              const bTime = b.seedTimeSeconds ?? Infinity;
-              return aTime - bTime;
+        if (hasResults) {
+          meetContext += `\n\nRESULTS SUMMARY (top 3 per event):`;
+          Object.entries(lineupsByEvent).forEach(([eventName, lineups]) => {
+            const sorted = [...lineups].sort((a, b) => (a.place ?? 999) - (b.place ?? 999));
+            const top = sorted.slice(0, 3);
+            meetContext += `\n- ${eventName}:`;
+            top.forEach((l) => {
+              const time = l.overrideTime ?? l.seedTime ?? "—";
+              meetContext += ` ${l.place ?? "?"}. ${formatName(l.athlete.firstName, l.athlete.lastName)} (${time}) ${(l.points ?? 0).toFixed(1)} pts`;
             });
-            if (sortedRelays[0].seedTime) {
-              meetContext += ` (Top: ${sortedRelays[0].team.name} - ${sortedRelays[0].seedTime})`;
-            }
+          });
+          Object.entries(relaysByEvent).forEach(([eventName, relays]) => {
+            const sorted = [...relays].sort((a, b) => (a.place ?? 999) - (b.place ?? 999));
+            const top = sorted.slice(0, 3);
+            meetContext += `\n- ${eventName} (relay):`;
+            top.forEach((r) => {
+              const time = r.overrideTime ?? r.seedTime ?? "—";
+              meetContext += ` ${r.place ?? "?"}. ${r.team.name} (${time}) ${(r.points ?? 0).toFixed(1)} pts`;
+            });
           });
         }
 
-        // Add detailed athlete lineup information
-        if (meet.meetLineups.length > 0) {
-          meetContext += `\n\nDETAILED LINEUPS:\n`;
-          
-          // Group by team, then by athlete
-          const athletesByTeam: Record<string, Record<string, typeof meet.meetLineups>> = {};
-          meet.meetLineups.forEach((lineup) => {
-            const teamName = lineup.athlete.team.name;
-            const athleteName = `${lineup.athlete.firstName} ${lineup.athlete.lastName}`;
-            
-            if (!athletesByTeam[teamName]) {
-              athletesByTeam[teamName] = {};
-            }
-            if (!athletesByTeam[teamName][athleteName]) {
-              athletesByTeam[teamName][athleteName] = [];
-            }
-            athletesByTeam[teamName][athleteName].push(lineup);
-          });
-
-          Object.entries(athletesByTeam).forEach(([teamName, athletes]) => {
-            meetContext += `\n${teamName}:`;
-            Object.entries(athletes).forEach(([athleteName, lineups]) => {
-              const events = lineups.map(l => `${l.event.name}${l.seedTime ? ` (${l.seedTime})` : ""}`).join(", ");
-              meetContext += `\n  - ${athleteName}: ${events}`;
+        const teamsWithTestSpot = meet.meetTeams.filter((mt) => {
+          const raw = (mt as { testSpotAthleteIds?: string | null }).testSpotAthleteIds;
+          if (!raw) return false;
+          try {
+            return (JSON.parse(raw) as string[]).length > 0;
+          } catch {
+            return false;
+          }
+        });
+        if (teamsWithTestSpot.length > 0) {
+          meetContext += `\n\nTEST SPOT SUMMARY:`;
+          teamsWithTestSpot.forEach((mt) => {
+            const raw = (mt as { testSpotAthleteIds?: string | null }).testSpotAthleteIds;
+            const testSpotIds: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+            const scoringId = (mt as { testSpotScoringAthleteId?: string | null }).testSpotScoringAthleteId ?? testSpotIds[0];
+            const currentTotal = mt.totalScore;
+            const scoringPts = pointsByAthleteId.get(scoringId ?? "") ?? 0;
+            meetContext += `\n- ${mt.team.name}:`;
+            testSpotIds.forEach((aid) => {
+              const name = athleteIdToName.get(aid) ?? aid;
+              const pts = pointsByAthleteId.get(aid) ?? 0;
+              const teamTotalIfScoring = currentTotal - scoringPts + pts;
+              meetContext += ` ${name} ${pts.toFixed(1)} pts (team total if scoring: ${teamTotalIfScoring.toFixed(1)});`;
             });
+          });
+        }
+
+        const teamsWithSensitivity = meet.meetTeams.filter((mt) => {
+          const sid = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
+          const better = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
+          const worse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
+          return !!sid && (better != null || worse != null);
+        });
+        if (teamsWithSensitivity.length > 0) {
+          meetContext += `\n\nSENSITIVITY ANALYSIS:`;
+          teamsWithSensitivity.forEach((mt) => {
+            const sid = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
+            const pct = (mt as { sensitivityPercent?: number | null }).sensitivityPercent ?? 1;
+            const name = sid ? athleteIdToName.get(sid) ?? sid : "—";
+            const base = (mt as { sensitivityAthletePointsBaseline?: number | null }).sensitivityAthletePointsBaseline;
+            const betterPts = (mt as { sensitivityAthletePointsBetter?: number | null }).sensitivityAthletePointsBetter;
+            const worsePts = (mt as { sensitivityAthletePointsWorse?: number | null }).sensitivityAthletePointsWorse;
+            const teamBase = mt.totalScore;
+            const teamBetter = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
+            const teamWorse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
+            meetContext += `\n- ${mt.team.name} — ${name} (±${pct}%):`;
+            meetContext += ` baseline ${base != null ? base.toFixed(1) : "—"} pts (team ${teamBase.toFixed(1)});`;
+            meetContext += ` better ${betterPts != null ? betterPts.toFixed(1) : "—"} pts (team ${teamBetter != null ? teamBetter.toFixed(1) : "—"});`;
+            meetContext += ` worse ${worsePts != null ? worsePts.toFixed(1) : "—"} pts (team ${teamWorse != null ? teamWorse.toFixed(1) : "—"}).`;
+          });
+        }
+
+        meetContext += `\n\nCONDENSED LINEUPS (events and times${hasResults ? ", points" : ""}):`;
+        const athletesByTeam: Record<string, Record<string, typeof meet.meetLineups>> = {};
+        meet.meetLineups.forEach((lineup) => {
+          const teamName = lineup.athlete.team.name;
+          const athleteName = formatName(lineup.athlete.firstName, lineup.athlete.lastName);
+          if (!athletesByTeam[teamName]) athletesByTeam[teamName] = {};
+          if (!athletesByTeam[teamName][athleteName]) athletesByTeam[teamName][athleteName] = [];
+          athletesByTeam[teamName][athleteName].push(lineup);
+        });
+        Object.entries(athletesByTeam).forEach(([teamName, athletes]) => {
+          meetContext += `\n${teamName}:`;
+          Object.entries(athletes).forEach(([athleteName, lineups]) => {
+            const parts = lineups.map((l) => {
+              const t = l.overrideTime ?? l.seedTime ?? "—";
+              return hasResults && l.points != null ? `${l.event.name} (${t}) ${l.points.toFixed(1)} pts` : `${l.event.name} (${t})`;
+            });
+            meetContext += `\n  - ${athleteName}: ${parts.join("; ")}`;
+          });
+        });
+
+        if (meet.relayEntries.length > 0) {
+          meetContext += `\n\nRELAYS:`;
+          const relayByTeam: Record<string, typeof meet.relayEntries> = {};
+          meet.relayEntries.forEach((r) => {
+            if (!relayByTeam[r.team.name]) relayByTeam[r.team.name] = [];
+            relayByTeam[r.team.name].push(r);
+          });
+          Object.entries(relayByTeam).forEach(([teamName, entries]) => {
+            const parts = entries.map((e) => `${e.event.name} (${e.overrideTime ?? e.seedTime ?? "—"})${hasResults && e.points != null ? ` ${e.points.toFixed(1)} pts` : ""}`);
+            meetContext += `\n- ${teamName}: ${parts.join("; ")}`;
           });
         }
 
@@ -277,9 +292,9 @@ TEAMS PARTICIPATING (${meet.meetTeams.length}):`;
     }
 
     // Add team context if provided
-    if (data.teamId) {
+    if (teamIdForContext) {
       const team = await prisma.team.findUnique({
-        where: { id: data.teamId },
+        where: { id: teamIdForContext },
         include: {
           athletes: {
             where: {

@@ -20,6 +20,13 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## AI Chat (optional)
+
+The in-app AI strategy chatbot uses the Anthropic API. Set in your environment:
+
+- `ANTHROPIC_API_KEY` – your API key (required for chat).
+- `ANTHROPIC_MODEL` – optional; defaults to `claude-sonnet-4-6`. Use `claude-sonnet-4-5` if 4.6 is not available.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

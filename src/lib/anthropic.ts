@@ -12,8 +12,7 @@ export function isAnthropicConfigured(): boolean {
 }
 
 // Helper to get model name (can be configured via env var or default)
-// Available models: claude-3-opus-20240229, claude-3-sonnet-20240229, claude-3-haiku-20240307
-// Claude 3 Haiku is the fastest and most cost-effective option
+// Default: Claude Sonnet 4.6 for strong strategy/reasoning. Override with ANTHROPIC_MODEL (e.g. claude-sonnet-4-5).
 export function getAnthropicModel(): string {
-  return process.env.ANTHROPIC_MODEL || "claude-3-haiku-20240307";
+  return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 }

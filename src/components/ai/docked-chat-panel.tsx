@@ -6,9 +6,17 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { MessageSquare, Send, Bot, User, Loader2, X, ChevronRight, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getPromptsForContext, type PromptContext } from "@/lib/ai-prompts";
 
 interface Message {
   id?: string;
@@ -23,13 +31,18 @@ export function DockedChatPanel() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [promptBankValue, setPromptBankValue] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const pathname = usePathname();
   const params = useParams();
 
   // Extract context from URL
   const meetId = params?.id && pathname.includes("/meets/") ? params.id as string : undefined;
   const teamId = params?.id && pathname.includes("/teams/") ? params.id as string : undefined;
+
+  const promptContext: PromptContext | null = meetId ? "meet" : teamId ? "team" : null;
+  const suggestedPrompts = getPromptsForContext(promptContext);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -254,10 +267,35 @@ export function DockedChatPanel() {
             )}
           </ScrollArea>
 
-          {/* Input */}
-          <div className="border-t border-slate-200 p-4 bg-slate-50 flex-shrink-0">
+          {/* Prompt bank + Input */}
+          <div className="border-t border-slate-200 p-4 bg-slate-50 flex-shrink-0 space-y-2">
+            {suggestedPrompts.length > 0 && (
+              <Select
+                value={promptBankValue}
+                onValueChange={(value) => {
+                  const item = suggestedPrompts.find((p) => p.label === value);
+                  if (item) {
+                    setInput(item.prompt);
+                    setPromptBankValue("");
+                    inputRef.current?.focus();
+                  }
+                }}
+              >
+                <SelectTrigger className="w-full text-slate-500" size="sm">
+                  <SelectValue placeholder="Suggested questions..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {suggestedPrompts.map((p) => (
+                    <SelectItem key={p.label} value={p.label}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <form onSubmit={handleSend} className="flex gap-2">
               <Input
+                ref={inputRef}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={
