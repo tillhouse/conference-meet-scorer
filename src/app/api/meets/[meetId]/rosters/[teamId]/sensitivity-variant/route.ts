@@ -4,6 +4,7 @@ import { z } from "zod";
 
 const bodySchema = z.object({
   variant: z.enum(["baseline", "better", "worse"]),
+  athleteId: z.string().optional(),
 });
 
 export async function PATCH(
@@ -28,12 +29,23 @@ export async function PATCH(
       );
     }
 
-    const mt = meetTeam as { sensitivityAthleteId?: string | null };
-    if (!mt.sensitivityAthleteId) {
+    const mt = meetTeam as { sensitivityAthleteIds?: string | null; sensitivityVariantAthleteId?: string | null };
+    const sensIds: string[] = mt.sensitivityAthleteIds ? (JSON.parse(mt.sensitivityAthleteIds) as string[]) : [];
+    if (sensIds.length === 0) {
       return NextResponse.json(
         { error: "This team has no sensitivity analysis; cannot set variant" },
         { status: 400 }
       );
+    }
+    let variantAthleteId = mt.sensitivityVariantAthleteId ?? sensIds[0];
+    if (data.athleteId) {
+      if (!sensIds.includes(data.athleteId)) {
+        return NextResponse.json(
+          { error: "athleteId must be one of this team's sensitivity athletes" },
+          { status: 400 }
+        );
+      }
+      variantAthleteId = data.athleteId;
     }
 
     await prisma.meetTeam.update({
@@ -42,6 +54,7 @@ export async function PATCH(
       },
       data: {
         sensitivityVariant: data.variant,
+        sensitivityVariantAthleteId: variantAthleteId,
       } as Record<string, unknown>,
     });
 

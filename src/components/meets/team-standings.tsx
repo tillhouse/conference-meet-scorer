@@ -45,14 +45,11 @@ interface MeetTeam {
   team: Team;
   testSpotAthleteIds?: string | null;
   testSpotScoringAthleteId?: string | null;
-  sensitivityAthleteId?: string | null;
+  sensitivityAthleteIds?: string | null;
   sensitivityPercent?: number | null;
   sensitivityVariant?: string | null;
-  sensitivityTotalScoreBetter?: number | null;
-  sensitivityTotalScoreWorse?: number | null;
-  sensitivityAthletePointsBaseline?: number | null;
-  sensitivityAthletePointsBetter?: number | null;
-  sensitivityAthletePointsWorse?: number | null;
+  sensitivityVariantAthleteId?: string | null;
+  sensitivityResults?: string | null;
 }
 
 interface RelayEntry {
@@ -538,10 +535,30 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
               <div className="font-semibold text-xs text-slate-600 text-right">Points Behind</div>
             </div>
             {sortedTeams.map((meetTeam, index) => {
+              type SensResult = { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number };
+              const getSensResults = (mt: MeetTeam): SensResult[] => {
+                const raw = mt.sensitivityResults;
+                if (!raw) return [];
+                try {
+                  return JSON.parse(raw) as SensResult[];
+                } catch {
+                  return [];
+                }
+              };
+              const getActiveSensResult = (mt: MeetTeam): SensResult | null => {
+                const results = getSensResults(mt);
+                const ids: string[] = mt.sensitivityAthleteIds
+                  ? (typeof mt.sensitivityAthleteIds === "string" ? (JSON.parse(mt.sensitivityAthleteIds) as string[]) : mt.sensitivityAthleteIds)
+                  : [];
+                const aid = mt.sensitivityVariantAthleteId ?? ids[0] ?? null;
+                if (!aid || results.length === 0) return null;
+                return results.find((r) => r.athleteId === aid) ?? results[0] ?? null;
+              };
               const getDisplayedTotal = (mt: MeetTeam) => {
                 const v = mt.sensitivityVariant ?? "baseline";
-                if (v === "better" && mt.sensitivityTotalScoreBetter != null) return mt.sensitivityTotalScoreBetter;
-                if (v === "worse" && mt.sensitivityTotalScoreWorse != null) return mt.sensitivityTotalScoreWorse;
+                const active = getActiveSensResult(mt);
+                if (v === "better" && active != null) return active.teamTotalBetter;
+                if (v === "worse" && active != null) return active.teamTotalWorse;
                 return mt.totalScore;
               };
               const displayedTotal = getDisplayedTotal(meetTeam);
@@ -554,12 +571,15 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                 : [];
               const hasTestSpot = testSpotIds.length > 0;
               const scoringId = meetTeam.testSpotScoringAthleteId ?? testSpotIds[0];
-              const hasSensitivity = !!(
-                meetTeam.sensitivityAthleteId &&
-                (meetTeam.sensitivityTotalScoreBetter != null || meetTeam.sensitivityTotalScoreWorse != null)
-              );
+              const sensResults = getSensResults(meetTeam);
+              const sensAthleteIds: string[] = meetTeam.sensitivityAthleteIds
+                ? (typeof meetTeam.sensitivityAthleteIds === "string" ? (JSON.parse(meetTeam.sensitivityAthleteIds) as string[]) : meetTeam.sensitivityAthleteIds)
+                : [];
+              const hasSensitivity = sensAthleteIds.length > 0 && sensResults.length > 0;
               const sensPercent = meetTeam.sensitivityPercent ?? 1;
               const sensVariant = meetTeam.sensitivityVariant ?? "baseline";
+              const sensVariantAthleteId = meetTeam.sensitivityVariantAthleteId ?? sensAthleteIds[0] ?? null;
+              const activeSensResult = getActiveSensResult(meetTeam);
 
               return (
                 <div
@@ -629,8 +649,41 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                     )}
                     {hasSensitivity && meetId && (
                       <div className="mt-1 space-y-0.5">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-slate-500">Sensitivity:</span>
+                          {sensAthleteIds.length > 1 && (
+                            <Select
+                              value={sensVariantAthleteId ?? ""}
+                              onValueChange={async (athleteId: string) => {
+                                try {
+                                  const res = await fetch(
+                                    `/api/meets/${meetId}/rosters/${meetTeam.teamId}/sensitivity-variant`,
+                                    {
+                                      method: "PATCH",
+                                      headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify({ variant: sensVariant, athleteId }),
+                                    }
+                                  );
+                                  if (!res.ok) throw new Error((await res.json()).error);
+                                  toast.success("Sensitivity athlete updated");
+                                  router.refresh();
+                                } catch (e) {
+                                  toast.error(e instanceof Error ? e.message : "Failed to update");
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-[140px]">
+                                <SelectValue placeholder="Athlete" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sensAthleteIds.map((id) => (
+                                  <SelectItem key={id} value={id}>
+                                    {athleteIdToName.get(id) ?? id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
                           <Select
                             value={sensVariant}
                             onValueChange={async (val: "baseline" | "better" | "worse") => {
@@ -640,7 +693,7 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                                   {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
-                                    body: JSON.stringify({ variant: val }),
+                                    body: JSON.stringify({ variant: val, athleteId: sensVariantAthleteId ?? undefined }),
                                   }
                                 );
                                 if (!res.ok) throw new Error((await res.json()).error);
@@ -661,16 +714,17 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="text-xs text-slate-500">
-                          Sensitivity athlete:{" "}
-                          {athleteIdToName.get(meetTeam.sensitivityAthleteId ?? "") ?? meetTeam.sensitivityAthleteId ?? "—"}
-                          {" · "}
-                          Baseline {(meetTeam.sensitivityAthletePointsBaseline ?? null) != null ? `${meetTeam.sensitivityAthletePointsBaseline!.toFixed(1)} pts` : "—"}
-                          {" · "}
-                          Better ({sensPercent}%) {(meetTeam.sensitivityAthletePointsBetter ?? null) != null ? `${meetTeam.sensitivityAthletePointsBetter!.toFixed(1)} pts` : "—"}
-                          {" · "}
-                          Worse ({sensPercent}%) {(meetTeam.sensitivityAthletePointsWorse ?? null) != null ? `${meetTeam.sensitivityAthletePointsWorse!.toFixed(1)} pts` : "—"}
-                        </div>
+                        {activeSensResult && (
+                          <div className="text-xs text-slate-500">
+                            {athleteIdToName.get(activeSensResult.athleteId) ?? activeSensResult.athleteId}
+                            {" · "}
+                            Baseline {activeSensResult.athletePtsBaseline.toFixed(1)} pts
+                            {" · "}
+                            Better ({sensPercent}%) {activeSensResult.athletePtsBetter.toFixed(1)} pts
+                            {" · "}
+                            Worse ({sensPercent}%) {activeSensResult.athletePtsWorse.toFixed(1)} pts
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

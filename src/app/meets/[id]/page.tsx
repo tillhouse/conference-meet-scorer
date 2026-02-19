@@ -17,8 +17,21 @@ export default async function MeetDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // #region agent log
+  const _log = (msg: string, data: Record<string, unknown>, hypothesisId: string) => {
+    fetch("http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ location: "meets/[id]/page.tsx", message: msg, data, hypothesisId, timestamp: Date.now() }),
+    }).catch(() => {});
+  };
+  // #endregion
+  let step = "params";
+  try {
   const { id } = await params;
+  _log("Meet page entry", { meetId: id }, "entry");
 
+  step = "findUnique";
   const meet = await prisma.meet.findUnique({
     where: { id },
     include: {
@@ -71,14 +84,21 @@ export default async function MeetDetailPage({
     },
   });
 
+  _log("After findUnique", { hasMeet: !!meet, meetId: id }, "A");
   if (!meet) {
     notFound();
   }
 
-  const selectedEvents = meet.selectedEvents
-    ? (JSON.parse(meet.selectedEvents) as string[])
-    : [];
+  step = "selectedEvents";
+  let selectedEvents: string[] = [];
+  try {
+    selectedEvents = meet.selectedEvents ? (JSON.parse(meet.selectedEvents) as string[]) : [];
+  } catch (e) {
+    _log("JSON.parse failed", { field: "selectedEvents", raw: String(meet.selectedEvents?.slice?.(0, 80)), err: String(e) }, "B");
+    throw e;
+  }
   // Fetch all selected events including individual, relay, and diving events
+  step = "findMany";
   const eventsUnsorted = await prisma.event.findMany({
     where: {
       id: { in: selectedEvents },
@@ -87,28 +107,57 @@ export default async function MeetDetailPage({
   });
 
   // Get event order (custom order if set, otherwise null)
-  const eventOrder = meet.eventOrder
-    ? (JSON.parse(meet.eventOrder) as string[])
-    : null;
+  step = "eventOrder";
+  let eventOrder: string[] | null = null;
+  try {
+    eventOrder = meet.eventOrder ? (JSON.parse(meet.eventOrder) as string[]) : null;
+  } catch (e) {
+    _log("JSON.parse failed", { field: "eventOrder", raw: String(meet.eventOrder?.slice?.(0, 80)), err: String(e) }, "B");
+    throw e;
+  }
 
   // Sort events according to custom order or default
+  step = "sortEventsByOrder";
+  _log("Before sortEventsByOrder", { eventsCount: eventsUnsorted.length, eventOrderIsArray: Array.isArray(eventOrder) }, "C");
   const events = sortEventsByOrder(eventsUnsorted, eventOrder);
+  _log("After sortEventsByOrder", { eventsLength: events.length }, "C");
 
-  const individualScoring = meet.individualScoring
-    ? (JSON.parse(meet.individualScoring) as Record<string, number>)
-    : {};
-  const relayScoring = meet.relayScoring
-    ? (JSON.parse(meet.relayScoring) as Record<string, number>)
-    : {};
-
-  const eventDays = meet.eventDays
-    ? (JSON.parse(meet.eventDays) as Record<string, number>)
-    : null;
+  step = "individualScoring";
+  let individualScoring: Record<string, number> = {};
+  let relayScoring: Record<string, number> = {};
+  let eventDays: Record<string, number> | null = null;
+  try {
+    individualScoring = meet.individualScoring ? (JSON.parse(meet.individualScoring) as Record<string, number>) : {};
+    relayScoring = meet.relayScoring ? (JSON.parse(meet.relayScoring) as Record<string, number>) : {};
+    eventDays = meet.eventDays ? (JSON.parse(meet.eventDays) as Record<string, number>) : null;
+  } catch (e) {
+    _log("JSON.parse failed", { field: "individualScoring|relayScoring|eventDays", err: String(e) }, "B");
+    throw e;
+  }
   const durationDays = meet.durationDays ?? 1;
 
   // Check if meet has been simulated (has places/points assigned)
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
+
+  step = "render";
+  _log("Before render", { hasResults, meetTeamsCount: meet.meetTeams.length }, "D");
+
+  // Check if payload is JSON-serializable (production can throw during RSC serialization)
+  step = "serialize";
+  try {
+    JSON.stringify({
+      meetTeams: meet.meetTeams,
+      meetLineups: meet.meetLineups,
+      relayEntries: meet.relayEntries,
+      events: events.slice(0, 2),
+      eventOrder,
+      eventDays,
+    });
+  } catch (serialErr) {
+    _log("JSON.stringify failed", { err: String(serialErr), step: "serialize" }, "error");
+    throw serialErr;
+  }
 
   return (
     <div className="space-y-6">
@@ -194,4 +243,11 @@ export default async function MeetDetailPage({
 
     </div>
   );
+  } catch (e) {
+    const errMsg = e instanceof Error ? e.message : String(e);
+    const errStack = e instanceof Error ? e.stack : undefined;
+    _log("Meet page exception", { step, err: errMsg, stack: errStack }, "error");
+    console.error("[meets/[id]] server exception", { step, error: errMsg, stack: errStack });
+    throw e;
+  }
 }

@@ -26,7 +26,7 @@ import { toast } from "sonner";
 
 interface MeetTeamSensitivity {
   teamId: string;
-  sensitivityAthleteId?: string | null;
+  sensitivityVariantAthleteId?: string | null;
   sensitivityVariant?: string | null;
   sensitivityPercent?: number | null;
   team?: { name?: string; schoolName?: string | null };
@@ -283,8 +283,8 @@ export function MeetAthleteSummaryTable({
       const teamId = lineup.athlete.team.id;
       const meetTeam = meetTeamsByTeamId.get(teamId);
       const useSensitivityVariant =
-        meetTeam?.sensitivityAthleteId &&
-        lineup.athleteId === meetTeam.sensitivityAthleteId &&
+        meetTeam?.sensitivityVariantAthleteId &&
+        lineup.athleteId === meetTeam.sensitivityVariantAthleteId &&
         (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
       let points = 0;
       if (useSensitivityVariant && meetTeam.sensitivityVariant === "better" && lineup.sensitivityPointsBetter != null) {
@@ -533,11 +533,11 @@ export function MeetAthleteSummaryTable({
   return (
     <div className="space-y-4 [&_table_th]:h-8 [&_table_th]:px-1.5 [&_table_th]:text-xs [&_table_td]:py-1.5 [&_table_td]:px-1.5 [&_table_td]:text-xs">
       {/* Sensitivity scenario toggle */}
-      {meetId && meetTeams.filter((mt) => mt.sensitivityAthleteId).length > 0 && (
+      {meetId && meetTeams.filter((mt) => mt.sensitivityVariantAthleteId).length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-sm font-medium text-slate-600">Sensitivity scenario:</span>
           {meetTeams
-            .filter((mt) => mt.sensitivityAthleteId)
+            .filter((mt) => mt.sensitivityVariantAthleteId)
             .map((mt) => {
               const sensVariant = mt.sensitivityVariant ?? "baseline";
               const sensPercent = mt.sensitivityPercent ?? 1;

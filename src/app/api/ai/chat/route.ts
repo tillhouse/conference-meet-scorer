@@ -230,27 +230,30 @@ STANDINGS (by total score):`;
         }
 
         const teamsWithSensitivity = meet.meetTeams.filter((mt) => {
-          const sid = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
-          const better = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
-          const worse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
-          return !!sid && (better != null || worse != null);
+          const raw = (mt as { sensitivityResults?: string | null }).sensitivityResults;
+          if (!raw) return false;
+          try {
+            return (JSON.parse(raw) as unknown[]).length > 0;
+          } catch {
+            return false;
+          }
         });
         if (teamsWithSensitivity.length > 0) {
           meetContext += `\n\nSENSITIVITY ANALYSIS:`;
+          type SensResult = { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number };
           teamsWithSensitivity.forEach((mt) => {
-            const sid = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
             const pct = (mt as { sensitivityPercent?: number | null }).sensitivityPercent ?? 1;
-            const name = sid ? athleteIdToName.get(sid) ?? sid : "—";
-            const base = (mt as { sensitivityAthletePointsBaseline?: number | null }).sensitivityAthletePointsBaseline;
-            const betterPts = (mt as { sensitivityAthletePointsBetter?: number | null }).sensitivityAthletePointsBetter;
-            const worsePts = (mt as { sensitivityAthletePointsWorse?: number | null }).sensitivityAthletePointsWorse;
+            const results: SensResult[] = (mt as { sensitivityResults?: string | null }).sensitivityResults
+              ? (JSON.parse((mt as { sensitivityResults: string }).sensitivityResults) as SensResult[])
+              : [];
             const teamBase = mt.totalScore;
-            const teamBetter = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
-            const teamWorse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
-            meetContext += `\n- ${mt.team.name} — ${name} (±${pct}%):`;
-            meetContext += ` baseline ${base != null ? base.toFixed(1) : "—"} pts (team ${teamBase.toFixed(1)});`;
-            meetContext += ` better ${betterPts != null ? betterPts.toFixed(1) : "—"} pts (team ${teamBetter != null ? teamBetter.toFixed(1) : "—"});`;
-            meetContext += ` worse ${worsePts != null ? worsePts.toFixed(1) : "—"} pts (team ${teamWorse != null ? teamWorse.toFixed(1) : "—"}).`;
+            results.forEach((r) => {
+              const name = athleteIdToName.get(r.athleteId) ?? r.athleteId;
+              meetContext += `\n- ${mt.team.name} — ${name} (±${pct}%):`;
+              meetContext += ` baseline ${r.athletePtsBaseline.toFixed(1)} pts (team ${teamBase.toFixed(1)});`;
+              meetContext += ` better ${r.athletePtsBetter.toFixed(1)} pts (team ${r.teamTotalBetter.toFixed(1)});`;
+              meetContext += ` worse ${r.athletePtsWorse.toFixed(1)} pts (team ${r.teamTotalWorse.toFixed(1)}).`;
+            });
           });
         }
 

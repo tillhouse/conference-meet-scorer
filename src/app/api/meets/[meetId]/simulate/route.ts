@@ -351,52 +351,47 @@ export async function POST(
         data: updateData,
       });
 
-      // Sensitivity analysis: compute better/worse team totals for this team's sensitivity athlete
-      const sensAthleteId = (meetTeam as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
+      // Sensitivity analysis: compute better/worse for each of up to 3 sensitivity athletes
+      const sensAthleteIds = (meetTeam as { sensitivityAthleteIds?: string | null }).sensitivityAthleteIds
+        ? (JSON.parse((meetTeam as { sensitivityAthleteIds: string }).sensitivityAthleteIds) as string[])
+        : [];
       const sensPct = (meetTeam as { sensitivityPercent?: number | null }).sensitivityPercent;
-      if (sensAthleteId && sensPct != null && sensPct > 0) {
+      const sensitivityResults: { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number }[] = [];
+
+      if (sensAthleteIds.length > 0 && sensPct != null && sensPct > 0) {
         const sensitivityLineups = await prisma.meetLineup.findMany({
           where: { meetId },
           include: { athlete: true, event: true },
         });
-        const sensAthleteLineups = sensitivityLineups.filter((l) => l.athleteId === sensAthleteId && l.athlete.teamId === meetTeam.teamId);
-        if (sensAthleteLineups.length === 0) {
-          await prisma.meetTeam.update({
-            where: { id: meetTeam.id },
-            data: {
-              sensitivityTotalScoreBetter: null,
-              sensitivityTotalScoreWorse: null,
-              sensitivityAthletePointsBaseline: null,
-              sensitivityAthletePointsBetter: null,
-              sensitivityAthletePointsWorse: null,
-            } as Record<string, unknown>,
-          });
-          // Clear any previously set sensitivity place/points on this team's lineups
-          await prisma.meetLineup.updateMany({
-            where: { meetId, athleteId: sensAthleteId },
-            data: {
-              sensitivityPlaceBetter: null,
-              sensitivityPointsBetter: null,
-              sensitivityPlaceWorse: null,
-              sensitivityPointsWorse: null,
-            } as Record<string, unknown>,
-          });
-        } else {
-          const pct = sensPct / 100;
+        const lineupsByEventSens: Record<string, typeof sensitivityLineups> = {};
+        sensitivityLineups.forEach((l) => {
+          if (!lineupsByEventSens[l.eventId]) lineupsByEventSens[l.eventId] = [];
+          lineupsByEventSens[l.eventId].push(l);
+        });
+        const getTime = (l: { overrideTimeSeconds?: number | null; seedTimeSeconds?: number | null; overrideTime?: string | null; seedTime?: string | null }) => {
+          const sec = l.overrideTimeSeconds ?? l.seedTimeSeconds;
+          if (sec != null) return sec;
+          const str = l.overrideTime ?? l.seedTime;
+          return str ? parseTimeToSeconds(str) : 0;
+        };
+        const pct = sensPct / 100;
+
+        for (const sensAthleteId of sensAthleteIds) {
+          const sensAthleteLineups = sensitivityLineups.filter((l) => l.athleteId === sensAthleteId && l.athlete.teamId === meetTeam.teamId);
+          if (sensAthleteLineups.length === 0) {
+            sensitivityResults.push({
+              athleteId: sensAthleteId,
+              teamTotalBetter: totalScore,
+              teamTotalWorse: totalScore,
+              athletePtsBaseline: 0,
+              athletePtsBetter: 0,
+              athletePtsWorse: 0,
+            });
+            continue;
+          }
           let athletePointsBaseline = 0;
           let athletePointsBetter = 0;
           let athletePointsWorse = 0;
-          const lineupsByEventSens: Record<string, typeof sensitivityLineups> = {};
-          sensitivityLineups.forEach((l) => {
-            if (!lineupsByEventSens[l.eventId]) lineupsByEventSens[l.eventId] = [];
-            lineupsByEventSens[l.eventId].push(l);
-          });
-          const getTime = (l: { overrideTimeSeconds?: number | null; seedTimeSeconds?: number | null; overrideTime?: string | null; seedTime?: string | null }) => {
-            const sec = l.overrideTimeSeconds ?? l.seedTimeSeconds;
-            if (sec != null) return sec;
-            const str = l.overrideTime ?? l.seedTime;
-            return str ? parseTimeToSeconds(str) : 0;
-          };
           const lineupUpdates: { id: string; sensitivityPlaceBetter: number; sensitivityPointsBetter: number; sensitivityPlaceWorse: number; sensitivityPointsWorse: number }[] = [];
           for (const lineup of sensAthleteLineups) {
             athletePointsBaseline += lineup.points ?? 0;
@@ -442,15 +437,13 @@ export async function POST(
           }
           const totalScoreBetter = totalScore - athletePointsBaseline + athletePointsBetter;
           const totalScoreWorse = totalScore - athletePointsBaseline + athletePointsWorse;
-          await prisma.meetTeam.update({
-            where: { id: meetTeam.id },
-            data: {
-              sensitivityTotalScoreBetter: totalScoreBetter,
-              sensitivityTotalScoreWorse: totalScoreWorse,
-              sensitivityAthletePointsBaseline: athletePointsBaseline,
-              sensitivityAthletePointsBetter: athletePointsBetter,
-              sensitivityAthletePointsWorse: athletePointsWorse,
-            } as Record<string, unknown>,
+          sensitivityResults.push({
+            athleteId: sensAthleteId,
+            teamTotalBetter: totalScoreBetter,
+            teamTotalWorse: totalScoreWorse,
+            athletePtsBaseline: athletePointsBaseline,
+            athletePtsBetter: athletePointsBetter,
+            athletePtsWorse: athletePointsWorse,
           });
           for (const u of lineupUpdates) {
             await prisma.meetLineup.update({
@@ -464,6 +457,26 @@ export async function POST(
             });
           }
         }
+
+        const mtExisting = meetTeam as { sensitivityVariantAthleteId?: string | null };
+        const variantAthleteId = mtExisting.sensitivityVariantAthleteId && sensAthleteIds.includes(mtExisting.sensitivityVariantAthleteId)
+          ? mtExisting.sensitivityVariantAthleteId
+          : sensAthleteIds[0];
+        await prisma.meetTeam.update({
+          where: { id: meetTeam.id },
+          data: {
+            sensitivityResults: JSON.stringify(sensitivityResults),
+            sensitivityVariantAthleteId: variantAthleteId,
+          } as Record<string, unknown>,
+        });
+      } else if (sensAthleteIds.length === 0) {
+        await prisma.meetTeam.update({
+          where: { id: meetTeam.id },
+          data: {
+            sensitivityResults: null,
+            sensitivityVariantAthleteId: null,
+          } as Record<string, unknown>,
+        });
       }
     }
 

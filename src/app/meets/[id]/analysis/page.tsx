@@ -76,10 +76,17 @@ export default async function MeetAnalysisPage({
   });
 
   const teamsWithSensitivity = meet.meetTeams.filter((mt) => {
-    const sensId = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
-    const better = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
-    const worse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
-    return !!sensId && (better != null || worse != null);
+    const raw = (mt as { sensitivityAthleteIds?: string | null }).sensitivityAthleteIds;
+    const resultsRaw = (mt as { sensitivityResults?: string | null }).sensitivityResults;
+    if (!raw) return false;
+    try {
+      const ids = JSON.parse(raw) as string[];
+      if (ids.length === 0) return false;
+      const results = resultsRaw ? (JSON.parse(resultsRaw) as { athleteId: string }[]) : [];
+      return results.length > 0;
+    } catch {
+      return false;
+    }
   });
 
   const hasAnyAnalysis = teamsWithTestSpot.length > 0 || teamsWithSensitivity.length > 0;
@@ -232,21 +239,17 @@ export default async function MeetAnalysisPage({
                 <CardHeader>
                   <CardTitle>Sensitivity Analysis</CardTitle>
                   <CardDescription>
-                    Team and athlete impact when the selected athlete performs X% better or worse
+                    Team and athlete impact when selected athletes perform X% better or worse
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {teamsWithSensitivity.map((mt) => {
-                    const sensId = (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId;
                     const sensPct = (mt as { sensitivityPercent?: number | null }).sensitivityPercent ?? 1;
                     const baseline = (mt as { totalScore: number }).totalScore;
-                    const better = (mt as { sensitivityTotalScoreBetter?: number | null }).sensitivityTotalScoreBetter;
-                    const worse = (mt as { sensitivityTotalScoreWorse?: number | null }).sensitivityTotalScoreWorse;
-                    const athleteBaseline = (mt as { sensitivityAthletePointsBaseline?: number | null }).sensitivityAthletePointsBaseline;
-                    const athleteBetter = (mt as { sensitivityAthletePointsBetter?: number | null }).sensitivityAthletePointsBetter;
-                    const athleteWorse = (mt as { sensitivityAthletePointsWorse?: number | null }).sensitivityAthletePointsWorse;
                     const teamName = formatTeamName(mt.team.name, mt.team.schoolName);
-                    const athleteName = sensId ? athleteIdToName.get(sensId) ?? sensId : "—";
+                    const resultsRaw = (mt as { sensitivityResults?: string | null }).sensitivityResults;
+                    type SensResult = { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number };
+                    const results: SensResult[] = resultsRaw ? (JSON.parse(resultsRaw) as SensResult[]) : [];
                     return (
                       <div
                         key={mt.id}
@@ -254,42 +257,51 @@ export default async function MeetAnalysisPage({
                         style={mt.team.primaryColor ? { borderLeftWidth: 4, borderLeftColor: mt.team.primaryColor } : undefined}
                       >
                         <div className="font-semibold text-slate-900">{teamName}</div>
-                        <div className="mt-1 text-sm text-slate-600">
-                          {athleteName} · ±{sensPct}%
-                        </div>
-                        <div className="mt-3 overflow-x-auto">
-                          <table className="w-full text-sm border-collapse analysis-table">
-                            <colgroup>
-                              <col className="min-w-[8rem]" />
-                              <col className="w-[7rem]" />
-                              <col className="w-[6rem]" />
-                            </colgroup>
-                            <thead>
-                              <tr className="border-b font-medium text-slate-700">
-                                <th className="text-left py-2 pr-3">Scenario</th>
-                                <th className="text-right py-2 pr-3 w-[7rem]">Individual Points</th>
-                                <th className="text-right py-2 w-[6rem]">Team Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b border-slate-100">
-                                <td className="py-2 pr-3">Baseline</td>
-                                <td className="text-right py-2 pr-3 w-[7rem]">{athleteBaseline != null ? athleteBaseline.toFixed(1) : "—"}</td>
-                                <td className="text-right py-2 w-[6rem]">{baseline.toFixed(1)}</td>
-                              </tr>
-                              <tr className="border-b border-slate-100">
-                                <td className="py-2 pr-3">Better ({sensPct}%)</td>
-                                <td className="text-right py-2 pr-3 w-[7rem]">{athleteBetter != null ? athleteBetter.toFixed(1) : "—"}</td>
-                                <td className="text-right py-2 w-[6rem]">{better != null ? better.toFixed(1) : "—"}</td>
-                              </tr>
-                              <tr className="border-b border-slate-100">
-                                <td className="py-2 pr-3">Worse ({sensPct}%)</td>
-                                <td className="text-right py-2 pr-3 w-[7rem]">{athleteWorse != null ? athleteWorse.toFixed(1) : "—"}</td>
-                                <td className="text-right py-2 w-[6rem]">{worse != null ? worse.toFixed(1) : "—"}</td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
+                        <div className="mt-1 text-sm text-slate-600">±{sensPct}%</div>
+                        {results.map((r, idx) => {
+                          const athleteName = athleteIdToName.get(r.athleteId) ?? r.athleteId;
+                          return (
+                            <div
+                              key={r.athleteId}
+                              className={`rounded-lg border border-slate-200 bg-slate-50/70 p-4 ${idx > 0 ? "mt-5" : "mt-4"}`}
+                            >
+                              <div className="text-sm font-semibold text-slate-900 mb-3">{athleteName}</div>
+                              <div className="overflow-x-auto rounded border border-slate-200 bg-white">
+                                <table className="w-full text-sm border-collapse analysis-table">
+                                  <colgroup>
+                                    <col className="min-w-[8rem]" />
+                                    <col className="w-[7rem]" />
+                                    <col className="w-[6rem]" />
+                                  </colgroup>
+                                  <thead>
+                                    <tr className="border-b bg-slate-50 font-medium text-slate-700">
+                                      <th className="text-left py-2 pr-3 pl-3">Scenario</th>
+                                      <th className="text-right py-2 pr-3 w-[7rem]">Individual Points</th>
+                                      <th className="text-right py-2 pr-3 w-[6rem]">Team Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    <tr className="border-b border-slate-100">
+                                      <td className="py-2 pr-3 pl-3">Better ({sensPct}%)</td>
+                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsBetter.toFixed(1)}</td>
+                                      <td className="text-right py-2 pr-3 w-[6rem]">{r.teamTotalBetter.toFixed(1)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-100">
+                                      <td className="py-2 pr-3 pl-3">Baseline</td>
+                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsBaseline.toFixed(1)}</td>
+                                      <td className="text-right py-2 pr-3 w-[6rem]">{baseline.toFixed(1)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-100">
+                                      <td className="py-2 pr-3 pl-3">Worse ({sensPct}%)</td>
+                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsWorse.toFixed(1)}</td>
+                                      <td className="text-right py-2 pr-3 w-[6rem]">{r.teamTotalWorse.toFixed(1)}</td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
                   })}

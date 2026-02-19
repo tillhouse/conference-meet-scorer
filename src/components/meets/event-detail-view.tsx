@@ -29,7 +29,7 @@ import { toast } from "sonner";
 
 interface MeetTeamSensitivity {
   teamId: string;
-  sensitivityAthleteId?: string | null;
+  sensitivityVariantAthleteId?: string | null;
   sensitivityVariant?: string | null;
   sensitivityPercent?: number | null;
   team?: { name?: string; schoolName?: string | null };
@@ -240,8 +240,8 @@ export function EventDetailView({
       const teamId = lineup.athlete.team.id;
       const meetTeam = meetTeamsByTeamId.get(teamId);
       const useSensitivityVariant =
-        meetTeam?.sensitivityAthleteId &&
-        lineup.athleteId === meetTeam.sensitivityAthleteId &&
+        meetTeam?.sensitivityVariantAthleteId &&
+        lineup.athleteId === meetTeam.sensitivityVariantAthleteId &&
         (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
       let place: number;
       let points: number;
@@ -564,7 +564,7 @@ export function EventDetailView({
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {meetTeams
-                      .filter((mt) => mt.sensitivityAthleteId)
+                      .filter((mt) => mt.sensitivityVariantAthleteId)
                       .map((mt) => {
                         const sensVariant = mt.sensitivityVariant ?? "baseline";
                         const sensPercent = mt.sensitivityPercent ?? 1;

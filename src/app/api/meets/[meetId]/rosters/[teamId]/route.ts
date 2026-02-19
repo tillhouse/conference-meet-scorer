@@ -12,11 +12,13 @@ const DEBUG_LOG = (payload: Record<string, unknown>) => {
   }).catch(() => {});
 };
 
+const SENSITIVITY_MAX_ATHLETES = 3;
+
 const saveRosterSchema = z.object({
   athleteIds: z.array(z.string()),
   testSpotAthleteIds: z.array(z.string()).optional(),
   testSpotScoringAthleteId: z.string().optional(),
-  sensitivityAthleteId: z.string().nullish(),
+  sensitivityAthleteIds: z.array(z.string()).max(SENSITIVITY_MAX_ATHLETES).optional(),
   sensitivityPercent: z.number().min(0.5).max(10).optional(),
 });
 
@@ -50,18 +52,20 @@ export async function GET(
       ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
       : [];
     const testSpotScoringAthleteId = meetTeam.testSpotScoringAthleteId ?? null;
-    const mt = meetTeam as { sensitivityAthleteId?: string | null; sensitivityPercent?: number | null; sensitivityVariant?: string | null };
-    const sensitivityAthleteId = mt.sensitivityAthleteId ?? null;
+    const mt = meetTeam as { sensitivityAthleteIds?: string | null; sensitivityPercent?: number | null; sensitivityVariant?: string | null; sensitivityVariantAthleteId?: string | null };
+    const sensitivityAthleteIds = mt.sensitivityAthleteIds ? (JSON.parse(mt.sensitivityAthleteIds) as string[]) : [];
     const sensitivityPercent = mt.sensitivityPercent ?? null;
     const sensitivityVariant = mt.sensitivityVariant ?? null;
+    const sensitivityVariantAthleteId = mt.sensitivityVariantAthleteId ?? null;
 
     return NextResponse.json({
       athleteIds,
       testSpotAthleteIds,
       testSpotScoringAthleteId,
-      sensitivityAthleteId,
+      sensitivityAthleteIds,
       sensitivityPercent,
       sensitivityVariant,
+      sensitivityVariantAthleteId,
     });
   } catch (error) {
     console.error("Error fetching roster:", error);
@@ -80,7 +84,7 @@ export async function POST(
     const { meetId, teamId } = await params;
     const body = await request.json();
     // #region agent log
-    DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-body", message: "Roster POST body before parse", data: { bodyKeys: Object.keys(body), sensitivityAthleteId: body.sensitivityAthleteId, sensitivityPercent: body.sensitivityPercent }, timestamp: Date.now(), hypothesisId: "H1" });
+    DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-body", message: "Roster POST body before parse", data: { bodyKeys: Object.keys(body), sensitivityAthleteIds: body.sensitivityAthleteIds, sensitivityPercent: body.sensitivityPercent }, timestamp: Date.now(), hypothesisId: "H1" });
     // #endregion
     let data: z.infer<typeof saveRosterSchema>;
     try {
@@ -160,13 +164,19 @@ export async function POST(
       }
     }
 
-    // Sensitivity: athlete must be on roster; clear if not
-    const sensitivityAthleteId = data.sensitivityAthleteId ?? null;
+    // Sensitivity: up to 3 athletes, each must be on roster
+    const sensitivityAthleteIds = (data.sensitivityAthleteIds ?? []).filter(Boolean);
     const sensitivityPercent = data.sensitivityPercent ?? null;
-    if (sensitivityAthleteId !== null) {
-      if (!athleteIdSet.has(sensitivityAthleteId)) {
+    if (sensitivityAthleteIds.length > SENSITIVITY_MAX_ATHLETES) {
+      return NextResponse.json(
+        { error: `sensitivityAthleteIds may have at most ${SENSITIVITY_MAX_ATHLETES} athletes` },
+        { status: 400 }
+      );
+    }
+    for (const id of sensitivityAthleteIds) {
+      if (!athleteIdSet.has(id)) {
         return NextResponse.json(
-          { error: "sensitivityAthleteId must be one of athleteIds" },
+          { error: "Each sensitivityAthleteId must be one of athleteIds" },
           { status: 400 }
         );
       }
@@ -188,58 +198,32 @@ export async function POST(
       );
     }
 
+    const mtExisting = meetTeam as { sensitivityAthleteIds?: string | null; sensitivityVariant?: string | null; sensitivityVariantAthleteId?: string | null };
+    const previousSensIds: string[] = mtExisting.sensitivityAthleteIds ? (JSON.parse(mtExisting.sensitivityAthleteIds) as string[]) : [];
+
     // Save the roster selection to MeetTeam
     const updateData: Record<string, unknown> = {
       selectedAthletes: JSON.stringify(data.athleteIds),
       testSpotAthleteIds: testSpotAthleteIds.length > 0 ? JSON.stringify(testSpotAthleteIds) : null,
       testSpotScoringAthleteId: testSpotAthleteIds.length > 0 ? testSpotScoringAthleteId : null,
-      sensitivityAthleteId: sensitivityAthleteId ?? null,
+      sensitivityAthleteIds: sensitivityAthleteIds.length > 0 ? JSON.stringify(sensitivityAthleteIds) : null,
       sensitivityPercent: sensitivityPercent ?? null,
-      sensitivityVariant: sensitivityAthleteId != null ? ((meetTeam as { sensitivityVariant?: string | null }).sensitivityVariant ?? "baseline") : null,
+      sensitivityVariant: sensitivityAthleteIds.length > 0 ? (mtExisting.sensitivityVariant ?? "baseline") : null,
+      sensitivityVariantAthleteId: sensitivityAthleteIds.length > 0 ? (mtExisting.sensitivityVariantAthleteId && sensitivityAthleteIds.includes(mtExisting.sensitivityVariantAthleteId) ? mtExisting.sensitivityVariantAthleteId : sensitivityAthleteIds[0]) : null,
+      sensitivityResults: null, // clear until next simulate
     };
-    if (sensitivityAthleteId == null) {
-      updateData.sensitivityTotalScoreBetter = null;
-      updateData.sensitivityTotalScoreWorse = null;
-      updateData.sensitivityAthletePointsBaseline = null;
-      updateData.sensitivityAthletePointsBetter = null;
-      updateData.sensitivityAthletePointsWorse = null;
-    }
 
     // #region agent log
-    let clientSchemaHasSensitivity = false;
-    try {
-      const clientSchemaPath = path.join(process.cwd(), "node_modules", ".prisma", "client", "schema.prisma");
-      const clientSchema = fs.readFileSync(clientSchemaPath, "utf-8");
-      clientSchemaHasSensitivity = clientSchema.includes("sensitivityAthleteId");
-    } catch {
-      // ignore
-    }
     DEBUG_LOG({
       location: "rosters/[teamId]/route.ts:before-update",
-      message: "MeetTeam update payload and client state",
+      message: "MeetTeam update payload",
       hypothesisId: "H1",
       runId: "roster-save",
-      data: {
-        prismaClientPath: require.resolve("@prisma/client"),
-        updatePayloadKeys: Object.keys(updateData),
-        clientSchemaHasSensitivity,
-      },
+      data: { updatePayloadKeys: Object.keys(updateData) },
     });
     // #endregion
 
-    if (!clientSchemaHasSensitivity && (sensitivityAthleteId != null || sensitivityPercent != null)) {
-      return NextResponse.json(
-        {
-          error:
-            "Prisma client is out of date. Stop the dev server, then run: npx prisma generate && npx prisma db push. Restart the dev server.",
-          details: "Generated client does not include sensitivity fields. Regenerate with the server stopped.",
-        },
-        { status: 503 }
-      );
-    }
-
     try {
-      const previousSensAthleteId = (meetTeam as { sensitivityAthleteId?: string | null }).sensitivityAthleteId ?? null;
       await prisma.meetTeam.update({
         where: {
           meetId_teamId: {
@@ -249,34 +233,38 @@ export async function POST(
         },
         data: updateData as Parameters<typeof prisma.meetTeam.update>[0]["data"],
       });
-      if (sensitivityAthleteId == null && previousSensAthleteId) {
-        await prisma.meetLineup.updateMany({
-          where: { meetId, athleteId: previousSensAthleteId },
-          data: {
-            sensitivityPlaceBetter: null,
-            sensitivityPointsBetter: null,
-            sensitivityPlaceWorse: null,
-            sensitivityPointsWorse: null,
-          },
-        });
+      // Clear lineup sensitivity fields for athletes no longer in sensitivity list
+      const newSet = new Set(sensitivityAthleteIds);
+      for (const prevId of previousSensIds) {
+        if (!newSet.has(prevId)) {
+          await prisma.meetLineup.updateMany({
+            where: { meetId, athleteId: prevId },
+            data: {
+              sensitivityPlaceBetter: null,
+              sensitivityPointsBetter: null,
+              sensitivityPlaceWorse: null,
+              sensitivityPointsWorse: null,
+            },
+          });
+        }
       }
-    } catch (updateError: any) {
+    } catch (updateError: unknown) {
       console.error("Error updating MeetTeam:", updateError);
+      const errMsg = updateError instanceof Error ? updateError.message : String(updateError);
       // #region agent log
       DEBUG_LOG({
         location: "rosters/[teamId]/route.ts:update-catch",
         message: "MeetTeam.update failed",
         hypothesisId: "H1",
         runId: "roster-save",
-        data: { errorMessage: updateError?.message ?? String(updateError) },
+        data: { errorMessage: errMsg },
       });
       // #endregion
-      // If selectedAthletes field doesn't exist yet, try without it first
-      if (updateError.message?.includes("Unknown argument") || updateError.message?.includes("selectedAthletes")) {
+      if (errMsg.includes("Unknown argument") || errMsg.includes("selectedAthletes")) {
         return NextResponse.json(
           {
             error: "Prisma client is out of date. Stop the dev server, then run: npx prisma generate && npx prisma db push. Restart the dev server.",
-            details: updateError.message,
+            details: errMsg,
           },
           { status: 500 }
         );

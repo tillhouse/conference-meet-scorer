@@ -204,7 +204,7 @@ export default async function EventDetailPage({
         testSpotAthleteIds={testSpotAthleteIds}
         meetTeams={meet.meetTeams.map((mt) => ({
           teamId: mt.teamId,
-          sensitivityAthleteId: (mt as { sensitivityAthleteId?: string | null }).sensitivityAthleteId,
+          sensitivityVariantAthleteId: (mt as { sensitivityVariantAthleteId?: string | null }).sensitivityVariantAthleteId,
           sensitivityVariant: (mt as { sensitivityVariant?: string | null }).sensitivityVariant,
           sensitivityPercent: (mt as { sensitivityPercent?: number | null }).sensitivityPercent,
           team: mt.team,

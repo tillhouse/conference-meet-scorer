@@ -14,8 +14,13 @@ export default withAuth(
   {
     callbacks: {
       authorized: ({ token, req }) => {
+        const pathname = req.nextUrl.pathname;
         // Allow root and auth pages
-        if (req.nextUrl.pathname === "/" || req.nextUrl.pathname.startsWith("/auth")) {
+        if (pathname === "/" || pathname.startsWith("/auth")) {
+          return true;
+        }
+        // Allow static assets (public folder) - avoid 401 on images etc.
+        if (/\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/i.test(pathname)) {
           return true;
         }
         // Require token for all other paths
