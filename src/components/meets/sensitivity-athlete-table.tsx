@@ -47,10 +47,15 @@ export function SensitivityAthleteTable({
   result,
   eventBreakdown,
 }: SensitivityAthleteTableProps) {
-  const [expanded, setExpanded] = useState<Scenario | null>(null);
+  const [expanded, setExpanded] = useState<Set<Scenario>>(new Set());
 
   const toggle = (scenario: Scenario) => {
-    setExpanded((prev) => (prev === scenario ? null : scenario));
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(scenario)) next.delete(scenario);
+      else next.add(scenario);
+      return next;
+    });
   };
 
   const rows: { scenario: Scenario; label: string; timeSec: number | null; points: number; teamTotal: number }[] = [
@@ -96,7 +101,7 @@ export function SensitivityAthleteTable({
         </thead>
         <tbody>
           {rows.map((row) => {
-            const isExpanded = expanded === row.scenario;
+            const isExpanded = expanded.has(row.scenario);
             const events = eventBreakdown[row.scenario];
             return (
               <React.Fragment key={row.scenario}>
@@ -117,9 +122,7 @@ export function SensitivityAthleteTable({
                     </button>
                   </td>
                   <td className="text-right py-1.5 pr-3 font-mono tabular-nums">
-                    {row.timeSec != null
-                      ? formatSecondsToTime(row.timeSec, result.isRepresentativeDiving ?? false)
-                      : "—"}
+                    —
                   </td>
                   <td className="text-right py-1.5 pr-3 w-[7rem]">{row.points.toFixed(1)}</td>
                   <td className="text-right py-1.5 pr-3 w-[6rem]">{row.teamTotal.toFixed(1)}</td>
