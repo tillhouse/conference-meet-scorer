@@ -3,7 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MeetNavigation } from "@/components/meets/meet-navigation";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
-import { formatName, formatTeamName, normalizeTimeFormat } from "@/lib/utils";
+import { SensitivityAthleteTable } from "@/components/meets/sensitivity-athlete-table";
+import { formatName, formatTeamName, normalizeTimeFormat, parseTimeToSeconds } from "@/lib/utils";
 
 export default async function MeetAnalysisPage({
   params,
@@ -90,6 +91,58 @@ export default async function MeetAnalysisPage({
   });
 
   const hasAnyAnalysis = teamsWithTestSpot.length > 0 || teamsWithSensitivity.length > 0;
+
+  type EventRow = { eventName: string; eventType: string; timeSec: number | null; points: number };
+  function getLineupTimeSec(l: {
+    overrideTimeSeconds?: number | null;
+    seedTimeSeconds?: number | null;
+    overrideTime?: string | null;
+    seedTime?: string | null;
+  }): number | null {
+    const sec = l.overrideTimeSeconds ?? l.seedTimeSeconds;
+    if (sec != null) return sec;
+    const str = l.overrideTime ?? l.seedTime;
+    return str != null && str !== "" ? parseTimeToSeconds(str) : null;
+  }
+  function buildEventBreakdown(
+    lineups: typeof meet.meetLineups,
+    athleteId: string,
+    teamId: string,
+    sensPct: number
+  ): { better: EventRow[]; baseline: EventRow[]; worse: EventRow[] } {
+    const athleteLineups = lineups.filter(
+      (l) => l.athleteId === athleteId && l.athlete?.teamId === teamId
+    );
+    const pct = sensPct / 100;
+    const better: EventRow[] = [];
+    const baseline: EventRow[] = [];
+    const worse: EventRow[] = [];
+    for (const lineup of athleteLineups) {
+      const eventName = lineup.event?.name ?? "";
+      const eventType = lineup.event?.eventType ?? "individual";
+      const baseTime = getLineupTimeSec(lineup) ?? 0;
+      const isDiving = eventType === "diving";
+      better.push({
+        eventName,
+        eventType,
+        timeSec: isDiving ? baseTime * (1 + pct) : baseTime * (1 - pct),
+        points: (lineup as { sensitivityPointsBetter?: number | null }).sensitivityPointsBetter ?? 0,
+      });
+      baseline.push({
+        eventName,
+        eventType,
+        timeSec: baseTime || null,
+        points: lineup.points ?? 0,
+      });
+      worse.push({
+        eventName,
+        eventType,
+        timeSec: isDiving ? baseTime * (1 - pct) : baseTime * (1 + pct),
+        points: (lineup as { sensitivityPointsWorse?: number | null }).sensitivityPointsWorse ?? 0,
+      });
+    }
+    return { better, baseline, worse };
+  }
 
   return (
     <div className="space-y-6">
@@ -189,9 +242,9 @@ export default async function MeetAnalysisPage({
                                     <col className="w-[6rem]" />
                                   </colgroup>
                                   <thead>
-                                    <tr className="border-b text-slate-600">
-                                      <th className="text-left py-1.5 pr-3 font-medium">Event</th>
-                                      <th className="text-right py-1.5 pr-3 font-medium w-[7rem]">Time</th>
+                                    <tr className="border-b bg-slate-50 font-medium text-slate-700">
+                                      <th className="text-left py-1.5 pr-3">Event</th>
+                                      <th className="text-right py-1.5 pr-3 w-[7rem]">Time</th>
                                       <th className="text-right py-1.5 font-medium w-[6rem]">Points</th>
                                     </tr>
                                   </thead>
@@ -248,7 +301,18 @@ export default async function MeetAnalysisPage({
                     const baseline = (mt as { totalScore: number }).totalScore;
                     const teamName = formatTeamName(mt.team.name, mt.team.schoolName);
                     const resultsRaw = (mt as { sensitivityResults?: string | null }).sensitivityResults;
-                    type SensResult = { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number };
+                    type SensResult = {
+                      athleteId: string;
+                      teamTotalBetter: number;
+                      teamTotalWorse: number;
+                      athletePtsBaseline: number;
+                      athletePtsBetter: number;
+                      athletePtsWorse: number;
+                      timeBaselineSec?: number | null;
+                      timeBetterSec?: number | null;
+                      timeWorseSec?: number | null;
+                      isRepresentativeDiving?: boolean;
+                    };
                     const results: SensResult[] = resultsRaw ? (JSON.parse(resultsRaw) as SensResult[]) : [];
                     return (
                       <div
@@ -258,46 +322,28 @@ export default async function MeetAnalysisPage({
                       >
                         <div className="font-semibold text-slate-900">{teamName}</div>
                         <div className="mt-1 text-sm text-slate-600">±{sensPct}%</div>
-                        {results.map((r, idx) => {
+                        {results.map((r) => {
                           const athleteName = athleteIdToName.get(r.athleteId) ?? r.athleteId;
+                          const eventBreakdown = buildEventBreakdown(
+                            meet.meetLineups,
+                            r.athleteId,
+                            mt.team.id,
+                            sensPct
+                          );
                           return (
                             <div
                               key={r.athleteId}
-                              className={`rounded-lg border border-slate-200 bg-slate-50/70 p-4 ${idx > 0 ? "mt-5" : "mt-4"}`}
+                              className="mt-4 rounded-lg border border-slate-200 bg-slate-50/70 p-4"
                             >
-                              <div className="text-sm font-semibold text-slate-900 mb-3">{athleteName}</div>
-                              <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-                                <table className="w-full text-sm border-collapse analysis-table">
-                                  <colgroup>
-                                    <col className="min-w-[8rem]" />
-                                    <col className="w-[7rem]" />
-                                    <col className="w-[6rem]" />
-                                  </colgroup>
-                                  <thead>
-                                    <tr className="border-b bg-slate-50 font-medium text-slate-700">
-                                      <th className="text-left py-2 pr-3 pl-3">Scenario</th>
-                                      <th className="text-right py-2 pr-3 w-[7rem]">Individual Points</th>
-                                      <th className="text-right py-2 pr-3 w-[6rem]">Team Total</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    <tr className="border-b border-slate-100">
-                                      <td className="py-2 pr-3 pl-3">Better ({sensPct}%)</td>
-                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsBetter.toFixed(1)}</td>
-                                      <td className="text-right py-2 pr-3 w-[6rem]">{r.teamTotalBetter.toFixed(1)}</td>
-                                    </tr>
-                                    <tr className="border-b border-slate-100">
-                                      <td className="py-2 pr-3 pl-3">Baseline</td>
-                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsBaseline.toFixed(1)}</td>
-                                      <td className="text-right py-2 pr-3 w-[6rem]">{baseline.toFixed(1)}</td>
-                                    </tr>
-                                    <tr className="border-b border-slate-100">
-                                      <td className="py-2 pr-3 pl-3">Worse ({sensPct}%)</td>
-                                      <td className="text-right py-2 pr-3 w-[7rem]">{r.athletePtsWorse.toFixed(1)}</td>
-                                      <td className="text-right py-2 pr-3 w-[6rem]">{r.teamTotalWorse.toFixed(1)}</td>
-                                    </tr>
-                                  </tbody>
-                                </table>
+                              <div className="text-sm font-medium text-slate-900">{athleteName}</div>
+                              <div className="mt-1">
+                                <SensitivityAthleteTable
+                                  athleteName={athleteName}
+                                  sensPct={sensPct}
+                                  baseline={baseline}
+                                  result={r}
+                                  eventBreakdown={eventBreakdown}
+                                />
                               </div>
                             </div>
                           );

@@ -356,7 +356,18 @@ export async function POST(
         ? (JSON.parse((meetTeam as { sensitivityAthleteIds: string }).sensitivityAthleteIds) as string[])
         : [];
       const sensPct = (meetTeam as { sensitivityPercent?: number | null }).sensitivityPercent;
-      const sensitivityResults: { athleteId: string; teamTotalBetter: number; teamTotalWorse: number; athletePtsBaseline: number; athletePtsBetter: number; athletePtsWorse: number }[] = [];
+      const sensitivityResults: {
+        athleteId: string;
+        teamTotalBetter: number;
+        teamTotalWorse: number;
+        athletePtsBaseline: number;
+        athletePtsBetter: number;
+        athletePtsWorse: number;
+        timeBaselineSec?: number | null;
+        timeBetterSec?: number | null;
+        timeWorseSec?: number | null;
+        isRepresentativeDiving?: boolean;
+      }[] = [];
 
       if (sensAthleteIds.length > 0 && sensPct != null && sensPct > 0) {
         const sensitivityLineups = await prisma.meetLineup.findMany({
@@ -437,6 +448,14 @@ export async function POST(
           }
           const totalScoreBetter = totalScore - athletePointsBaseline + athletePointsBetter;
           const totalScoreWorse = totalScore - athletePointsBaseline + athletePointsWorse;
+          // Representative time from the athlete's highest-point event (for sensitivity summary "Time" column)
+          const representativeLineup = sensAthleteLineups.reduce((best, l) =>
+            ((l.points ?? 0) > (best.points ?? 0) ? l : best)
+          );
+          const repBaseTime = getTime(representativeLineup);
+          const repIsDiving = representativeLineup.event.eventType === "diving";
+          const repBetterTime = repIsDiving ? repBaseTime * (1 + pct) : repBaseTime * (1 - pct);
+          const repWorseTime = repIsDiving ? repBaseTime * (1 - pct) : repBaseTime * (1 + pct);
           sensitivityResults.push({
             athleteId: sensAthleteId,
             teamTotalBetter: totalScoreBetter,
@@ -444,6 +463,10 @@ export async function POST(
             athletePtsBaseline: athletePointsBaseline,
             athletePtsBetter: athletePointsBetter,
             athletePtsWorse: athletePointsWorse,
+            timeBaselineSec: repBaseTime,
+            timeBetterSec: repBetterTime,
+            timeWorseSec: repWorseTime,
+            isRepresentativeDiving: repIsDiving,
           });
           for (const u of lineupUpdates) {
             await prisma.meetLineup.update({
