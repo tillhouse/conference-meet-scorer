@@ -67,6 +67,48 @@ export async function GET(
   }
 }
 
+const patchMeetSchema = z.object({
+  scoringMode: z.enum(["simulated", "real", "hybrid"]).optional(),
+});
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ meetId: string }> }
+) {
+  try {
+    const { meetId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const data = patchMeetSchema.parse(body);
+
+    const existing = await prisma.meet.findUnique({ where: { id: meetId } });
+    if (!existing) {
+      return NextResponse.json({ error: "Meet not found" }, { status: 404 });
+    }
+
+    const updateData: { scoringMode?: string } = {};
+    if (data.scoringMode !== undefined) updateData.scoringMode = data.scoringMode;
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(existing);
+    }
+
+    const meet = await prisma.meet.update({
+      where: { id: meetId },
+      data: updateData,
+    });
+    return NextResponse.json(meet);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: "Invalid data", details: error.issues }, { status: 400 });
+    }
+    console.error("Error PATCH meet:", error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to update meet" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ meetId: string }> }

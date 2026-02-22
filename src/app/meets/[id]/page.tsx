@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Calendar, MapPin } from "lucide-react";
 import Link from "next/link";
 import { SimulateMeetButton } from "@/components/meets/simulate-meet-button";
+import { ScoringModeSelector } from "@/components/meets/scoring-mode-selector";
+import { RealResultsUpload } from "@/components/meets/real-results-upload";
 import { ScoreProgressionGraph } from "@/components/meets/score-progression-graph";
 import { ClassYearBreakdown } from "@/components/meets/class-year-breakdown";
 import { MeetNavigation } from "@/components/meets/meet-navigation";
@@ -187,7 +189,8 @@ export default async function MeetDetailPage({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 justify-end">
-          <SimulateMeetButton meetId={id} hasResults={hasResults} />
+          <ScoringModeSelector meetId={id} value={meet.scoringMode} />
+          <SimulateMeetButton meetId={id} hasResults={hasResults} scoringMode={meet.scoringMode} />
           <Button variant="outline" asChild>
             <Link href="/meets">
               Back to Meets
@@ -198,6 +201,11 @@ export default async function MeetDetailPage({
 
       {/* Navigation */}
       <MeetNavigation meetId={id} status={meet.status} />
+
+      {/* Real results upload - when mode is real or hybrid */}
+      {(meet.scoringMode === "real" || meet.scoringMode === "hybrid") && (
+        <RealResultsUpload meetId={id} />
+      )}
 
       {/* Team Standings - View only; meet actions live in header */}
       <TeamStandings 

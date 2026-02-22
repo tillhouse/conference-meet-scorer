@@ -43,6 +43,8 @@ interface MeetLineup {
   seedTimeSeconds: number | null;
   overrideTime: string | null;
   overrideTimeSeconds: number | null;
+  finalTime: string | null;
+  finalTimeSeconds: number | null;
   place: number | null;
   points: number | null;
   sensitivityPlaceBetter?: number | null;
@@ -76,6 +78,8 @@ interface RelayEntry {
   seedTimeSeconds: number | null;
   overrideTime: string | null;
   overrideTimeSeconds: number | null;
+  finalTime: string | null;
+  finalTimeSeconds: number | null;
   place: number | null;
   points: number | null;
   members: string | null;
@@ -188,15 +192,15 @@ export function EventDetailView({
   const bFinalRange = { min: 9, max: Math.min(16, scoringPlaces) };
   const cFinalRange = { min: 17, max: Math.min(24, scoringPlaces) };
 
-  // Helper to get effective time (override if present, otherwise seed)
+  // Helper to get effective time: real result (finalTime) if set, else override, else seed
   const getEffectiveTime = useCallback((lineup: MeetLineup | RelayEntry) => {
-    // Safely access overrideTime (may not exist on older records)
+    if (lineup.finalTime) return lineup.finalTime;
     const overrideTime = 'overrideTime' in lineup ? lineup.overrideTime : null;
     return overrideTime ?? lineup.seedTime;
   }, []);
 
   const getEffectiveTimeSeconds = useCallback((lineup: MeetLineup | RelayEntry) => {
-    // Safely access overrideTimeSeconds (may not exist on older records)
+    if (lineup.finalTimeSeconds != null) return lineup.finalTimeSeconds;
     const overrideTimeSeconds = 'overrideTimeSeconds' in lineup ? lineup.overrideTimeSeconds : null;
     return overrideTimeSeconds ?? lineup.seedTimeSeconds;
   }, []);
@@ -221,12 +225,12 @@ export function EventDetailView({
       });
     });
 
-    // Sort lineups by time/score (use override if present)
+    // Sort lineups by time/score (real result > override > seed)
     const sortedLineups = [...meetLineups].sort((a, b) => {
       const aOverride = 'overrideTimeSeconds' in a ? a.overrideTimeSeconds : null;
       const bOverride = 'overrideTimeSeconds' in b ? b.overrideTimeSeconds : null;
-      const aTime = (aOverride ?? a.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
-      const bTime = (bOverride ?? b.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
+      const aTime = (a.finalTimeSeconds ?? aOverride ?? a.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
+      const bTime = (b.finalTimeSeconds ?? bOverride ?? b.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
 
       if (event.eventType === "diving") {
         return bTime - aTime; // Higher is better

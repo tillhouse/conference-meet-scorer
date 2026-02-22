@@ -52,6 +52,29 @@ interface Team {
   id: string;
   name: string;
   schoolName?: string | null;
+  shortName?: string | null;
+}
+
+type MeetGender = "men" | "women" | "coed";
+
+function filterTeamsByGender(teams: Team[], gender: MeetGender): Team[] {
+  if (gender === "coed") return teams;
+  const lower = (s: string) => (s || "").toLowerCase();
+  return teams.filter((t) => {
+    const name = lower(t.name);
+    const short = lower(t.shortName || "");
+    if (gender === "men") {
+      if (short.endsWith("-m")) return true;
+      if (name.includes("men") && !name.includes("women")) return true;
+      return false;
+    }
+    if (gender === "women") {
+      if (short.endsWith("-w")) return true;
+      if (name.includes("women")) return true;
+      return false;
+    }
+    return true;
+  });
 }
 
 interface Event {
@@ -103,6 +126,7 @@ export default function NewMeetPageInternal() {
   const teamAccountId = searchParams.get("teamAccountId");
   const [loading, setLoading] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [meetGender, setMeetGender] = useState<MeetGender>("men");
   const [events, setEvents] = useState<Event[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [eventOrder, setEventOrder] = useState<string[]>([]);
@@ -167,9 +191,10 @@ export default function NewMeetPageInternal() {
         setTeams(teamsData);
         setLoadingData(false);
 
-        // Pre-select all teams if coming from team account
+        // Pre-select teams if coming from team account (only those matching default Men filter)
         if (teamAccountId && teamsData.length > 0) {
-          const teamIds = teamsData.map((t) => t.id);
+          const defaultFiltered = filterTeamsByGender(teamsData, "men");
+          const teamIds = defaultFiltered.length > 0 ? defaultFiltered.map((t) => t.id) : teamsData.map((t) => t.id);
           setValue("teamIds", teamIds);
         }
       } catch (error) {
@@ -182,8 +207,20 @@ export default function NewMeetPageInternal() {
     loadData();
   }, [teamAccountId, setValue]);
 
+  const filteredTeams = useMemo(() => filterTeamsByGender(teams, meetGender), [teams, meetGender]);
+
   const selectedTeamIds = watch("teamIds");
   const selectedEventIds = watch("eventIds");
+
+  // When gender filter changes, keep only selected teams that still appear in the filtered list
+  useEffect(() => {
+    const filteredIds = new Set(filteredTeams.map((t) => t.id));
+    const validSelected = selectedTeamIds.filter((id: string) => filteredIds.has(id));
+    if (validSelected.length !== selectedTeamIds.length) {
+      setValue("teamIds", validSelected);
+    }
+  }, [meetGender, filteredTeams, setValue]);
+
   const meetType = watch("meetType");
   const divingIncluded = watch("divingIncluded");
   const scoringPlaces = watch("scoringPlaces");
@@ -477,6 +514,26 @@ export default function NewMeetPageInternal() {
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="meetGender">Division</Label>
+              <Select
+                value={meetGender}
+                onValueChange={(value) => setMeetGender(value as MeetGender)}
+              >
+                <SelectTrigger id="meetGender">
+                  <SelectValue placeholder="Men / Women / Co-ed" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="men">Men</SelectItem>
+                  <SelectItem value="women">Women</SelectItem>
+                  <SelectItem value="coed">Co-ed</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                Filters the team list below to match the meet division (default: Men).
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -637,30 +694,38 @@ export default function NewMeetPageInternal() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 max-h-64 overflow-y-auto border rounded-lg p-4">
-              {teams.map((team) => (
-                <div key={team.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`team-${team.id}`}
-                    checked={selectedTeamIds.includes(team.id)}
-                    onCheckedChange={(checked) => {
-                      if (checked) {
-                        setValue("teamIds", [...selectedTeamIds, team.id]);
-                      } else {
-                        setValue(
-                          "teamIds",
-                          selectedTeamIds.filter((id) => id !== team.id)
-                        );
-                      }
-                    }}
-                  />
-                  <Label
-                    htmlFor={`team-${team.id}`}
-                    className="text-sm font-normal cursor-pointer"
-                  >
-                    {team.schoolName ? `${team.schoolName} - ${team.name}` : team.name}
-                  </Label>
-                </div>
-              ))}
+              {filteredTeams.length === 0 ? (
+                <p className="text-sm text-slate-500 col-span-full">
+                  No teams match the selected division ({meetGender}). Try &quot;Co-ed&quot; to see all teams.
+                </p>
+              ) : (
+                <>
+                  {filteredTeams.map((team) => (
+                    <div key={team.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`team-${team.id}`}
+                        checked={selectedTeamIds.includes(team.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setValue("teamIds", [...selectedTeamIds, team.id]);
+                          } else {
+                            setValue(
+                              "teamIds",
+                              selectedTeamIds.filter((id) => id !== team.id)
+                            );
+                          }
+                        }}
+                      />
+                      <Label
+                        htmlFor={`team-${team.id}`}
+                        className="text-sm font-normal cursor-pointer"
+                      >
+                        {team.schoolName ? `${team.schoolName} - ${team.name}` : team.name}
+                      </Label>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
             {errors.teamIds && (
               <p className="text-sm text-red-600 mt-2">{errors.teamIds.message}</p>

@@ -1,0 +1,48 @@
+ Event 1  Women 200 Yard Medley Relay
+==================================================================================
+     Ivy Meet: @ 1:36.13  2/18/2026 Harvard University, Harvard
+                          A Mostek, A Marakovic, S Lu, B Wieclawek
+  Pool Record: ! 1:36.13  2/18/2026 Harvard University, Harvard
+                          A Mostek, A Marakovic, S Lu, B Wieclawek
+    School                                 Seed     Finals Points 
+==================================================================================
+  1 Harvard  'A'                        1:37.77    1:36.13@  64  
+     1) Mostek, Anya SR               2) r:0.15 Marakovic, Aliana FR  
+     3) r:0.03 Lu, Sydney SR          4) r:0.07 Wieclawek, Blythe JR  
+    r:+0.57  24.17        51.77 (27.60)
+        1:14.41 (22.64)     1:36.13 (21.72)
+  2 Princeton  'A'                      1:38.21    1:36.64   56  
+     1) Herr, Delaney FR              2) r:0.29 Smithwick, Heidi SR   
+     3) r:0.28 Johnston, Sabrina SR   4) r:0.30 Sunwoo, Sophia FR     
+    r:+0.55  24.41        51.87 (27.46)
+        1:14.80 (22.93)     1:36.64 (21.84)
+  3 Yale  'A'                           1:38.75    1:37.42   54  
+     1) Sargent, Devyn SO             2) r:0.23 Li, Jessey SR         
+     3) r:0.80 Zarczynski, Penny FR   4) r:0.30 Plunkett, Sara JR     
+    r:+0.53  24.57        51.40 (26.83)
+        1:15.17 (23.77)     1:37.42 (22.25)
+  4 Penn  'A'                           1:39.90    1:38.42   52  
+     1) Qin, Amy SO                   2) r:0.26 Handley, Kate JR      
+     3) r:0.07 Cong, Brianna FR       4) r:0.04 Smith, Amber SR       
+    r:+0.53  24.36        52.34 (27.98)
+        1:15.88 (23.54)     1:38.42 (22.54)
+  5 Cornell  'A'                        1:41.07    1:39.56   50  
+     1) Xu, Mingna JR                 2) r:0.26 Holden, Audrey SR     
+     3) r:0.10 Derstadt, Sadye FR     4) r:0.20 Li, Kate SR           
+    r:+0.47  25.04        52.96 (27.92)
+        1:16.92 (23.96)     1:39.56 (22.64)
+  6 Dartmouth  'A'                      1:41.38    1:39.72   48  
+     1) Bozkurt, Sena FR              2) r:0.04 Jia, Katherine JR     
+     3) r:0.20 Murray, Lane SR        4) r:0.17 Bethea, Carinn JR     
+    r:+0.57  25.46        53.54 (28.08)
+        1:17.63 (24.09)     1:39.72 (22.09)
+  7 Brown  'A'                          1:41.00    1:40.14   46  
+     1) Barck, Emilia SO              2) r:0.48 Chen, Angelina FR     
+     3) r:0.32 Klinginsmith, Llian SR 4) r:0.36 Chung, Audrey SO      
+    r:+0.58  25.64        53.64 (28.00)
+        1:17.48 (23.84)     1:40.14 (22.66)
+  8 Columbia  'A'                       1:41.75    1:41.16   44  
+     1) Shields, Shaelyn FR           2) r:0.34 Hong, Ashley SO       
+     3) r:0.09 Chan, Ella FR          4) r:0.12 Ma, Sally SR          
+    r:+0.57  26.33        54.75 (28.42)
+        1:18.72 (23.97)     1:41.16 (22.44)

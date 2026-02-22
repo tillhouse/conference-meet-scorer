@@ -45,6 +45,23 @@ export async function POST(
       ? (JSON.parse(meet.relayScoring) as Record<string, number>)
       : {};
 
+    // Scoring mode: skip simulation for events that have real results (hybrid), or skip all overwrites (real)
+    const scoringMode = meet.scoringMode ?? "simulated";
+    let realResultsEventIds: string[] = [];
+    try {
+      realResultsEventIds = meet.realResultsEventIds
+        ? (JSON.parse(meet.realResultsEventIds) as string[])
+        : [];
+    } catch {
+      realResultsEventIds = [];
+    }
+
+    const shouldSkipEvent = (eventId: string): boolean => {
+      if (scoringMode === "real") return true; // real mode: don't overwrite any event
+      if (scoringMode === "hybrid" && realResultsEventIds.includes(eventId)) return true;
+      return false;
+    };
+
     // Group lineups by event
     const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
     meet.meetLineups.forEach((lineup) => {
@@ -66,6 +83,7 @@ export async function POST(
     // Process individual events and diving
     for (const [eventId, lineups] of Object.entries(lineupsByEvent)) {
       if (lineups.length === 0) continue;
+      if (shouldSkipEvent(eventId)) continue;
 
       const eventType = lineups[0].event.eventType;
 
@@ -171,6 +189,7 @@ export async function POST(
     // Process relay events
     for (const [eventId, relays] of Object.entries(relaysByEvent)) {
       if (relays.length === 0) continue;
+      if (shouldSkipEvent(eventId)) continue;
 
       // Sort by time (use override if present, otherwise seed)
       const sorted = [...relays].sort((a, b) => {

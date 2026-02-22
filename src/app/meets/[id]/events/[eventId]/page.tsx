@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { EventDetailView } from "@/components/meets/event-detail-view";
+import { ApplyRealResultsEvent } from "@/components/meets/apply-real-results-event";
 import { sortEventsByOrder } from "@/lib/event-utils";
 import {
   Select,
@@ -188,6 +189,16 @@ export default async function EventDetailPage({
         prevEvent={prevEvent}
         nextEvent={nextEvent}
       />
+
+      {/* Real results paste + apply - when meet is real or hybrid */}
+      {(meet.scoringMode === "real" || meet.scoringMode === "hybrid") && (
+        <ApplyRealResultsEvent
+          meetId={id}
+          eventId={eventId}
+          eventName={event.name}
+          eventType={event.eventType}
+        />
+      )}
 
       {/* Event Detail View */}
       <EventDetailView

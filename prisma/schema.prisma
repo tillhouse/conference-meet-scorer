@@ -257,6 +257,10 @@ model Meet {
   // Event day assignment (JSON: {"eventId": 1, "eventId2": 2} = day 1..durationDays)
   eventDays  String?
 
+  // Scoring mode: simulated (seed times), real (pasted/uploaded results), hybrid (mix)
+  scoringMode        String? @default("simulated") // "simulated" | "real" | "hybrid"
+  realResultsEventIds String? // JSON array of event IDs that have had real results applied (for hybrid)
+
   team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamAccount Team?   @relation("TeamAccountMeets", fields: [teamAccountId], references: [id], onDelete: SetNull)
   conference  Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)

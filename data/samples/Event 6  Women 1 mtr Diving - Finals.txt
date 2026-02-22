@@ -1,0 +1,48 @@
+Event 6  Women 1 mtr Diving
+=========================================================================
+     Ivy Meet: @ 318.45  2/19/2026 Charlotte Martinkus, Princeton
+  Pool Record: ! 318.45  2/19/2026 Charlotte Martinkus, Princeton
+    Name                 Year School            Prelims     Finals Points 
+=========================================================================
+                            === A - Final ===                            
+ 
+  1 Martinkus, Charlotte   SR Princeton          277.05     318.45!  32  
+  2 Norman, Charlotte      SO Princeton          293.05     305.30   28  
+  3 Janmyr, Nina           SR Harvard            293.65     304.95   27  
+  4 Yeh, Elena             SR Brown              273.95     270.40   26  
+  5 Squire, Maggie         SO Princeton          270.15     269.65   25  
+  6 Lai, Paige             SR Yale               262.95     258.65   24  
+  7 Yang, Rachel           SO Penn               263.10     256.50   23  
+  8 Kuziemko, Lilla        FR Cornell            257.55     235.35   22  
+ 
+                            === B - Final ===                            
+ 
+  9 George, Isabella       JR Brown              242.35     268.70   20  
+ 10 Brennan, Vivian        FR Princeton          244.80     265.00   17  
+ 11 Carlson, Ennika        SO Harvard            244.70     258.35   16  
+ 12 Howard, Sadie          SR Penn               252.15     252.25   15  
+ 13 Krawczyk, Bowie        SR Brown              237.80     249.25   14  
+ 14 Andrews, Brooke        JR Cornell            240.95     243.20   13  
+ 15 Shi, Christina         JR Harvard            241.00     238.50   12  
+ 16 Johnsson Stjernstrom,  SO Dartmouth          254.20     231.60   11  
+ 
+                          === Preliminaries ===                          
+ 
+ 17 Horenkamp, Lily        SR Yale               237.30               9  
+ 18 Leung, Chloe           SR Columbia           235.20               7  
+ 19 Malarky, Lola          FR Yale               230.15               6  
+ 20 Lambdin, Maggie        JR Dartmouth          227.45               5  
+ 21 Wu, Grace              SO Yale               227.40               4  
+ 22 Holtz, Samantha        SO Harvard            227.20               3  
+ 23 Chen-Fiske, Tabitha    SR Harvard            226.15               2  
+ 24 Kirkman, Emily         FR Dartmouth          225.50               1  
+ 25 Ogata, Morgan          JR Cornell            223.55             
+ 26 Lopach, Chiara         SR Dartmouth          222.25             
+ 27 Ching, Camille         FR Harvard            199.30             
+ 28 Bondarenko, Valeriya   SO Columbia           193.30             
+ 29 Slayden, Sophie        JR Penn               191.55             
+ 30 Cornell, Claire        JR Dartmouth          188.90             
+ 31 Davidson, Liv          FR Princeton          168.25             
+ 32 Sherman, Lillian       FR Columbia           142.85             
+ 33 Huang, Mariana         SO Yale                59.80             
+ -- Newman, Charlotte      SO Harvard            188.10         X0  
