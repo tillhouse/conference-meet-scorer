@@ -19,6 +19,10 @@ export default withAuth(
         if (pathname === "/" || pathname.startsWith("/auth")) {
           return true;
         }
+        // Allow public view-only meet share links (no auth required)
+        if (pathname.startsWith("/view/meet")) {
+          return true;
+        }
         // Allow static assets (public folder) - avoid 401 on images etc.
         if (/\.(?:svg|png|jpg|jpeg|gif|webp|ico)$/i.test(pathname)) {
           return true;

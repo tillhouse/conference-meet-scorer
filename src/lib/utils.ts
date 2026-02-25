@@ -81,6 +81,16 @@ export function formatName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`;
 }
 
+/** Convert "Last, First" (meet format) to "First Last" for display. */
+export function formatSwimmerDisplayName(name: string): string {
+  if (!name?.trim()) return name ?? "";
+  const i = name.indexOf(", ");
+  if (i === -1) return name.trim();
+  const last = name.slice(0, i).trim();
+  const first = name.slice(i + 2).trim();
+  return first && last ? `${first} ${last}` : name.trim();
+}
+
 // Format team name - default to school name if available, otherwise use team name
 // This prioritizes school name for display while keeping team name distinction in backend
 export function formatTeamName(name: string, schoolName?: string | null): string {

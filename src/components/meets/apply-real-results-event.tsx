@@ -70,6 +70,7 @@ export function ApplyRealResultsEvent({
         unresolved: data.unresolved ?? [],
         parseErrors: data.parseErrors ?? [],
       });
+      setResultText("");
       const msg = [
         data.appliedLineups > 0 && `${data.appliedLineups} lineups`,
         data.appliedRelays > 0 && `${data.appliedRelays} relays`,

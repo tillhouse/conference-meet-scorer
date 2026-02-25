@@ -2,19 +2,32 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MeetAthleteSummaryTable } from "@/components/meets/meet-athlete-summary-table";
-import { MeetNavigation } from "@/components/meets/meet-navigation";
-import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 import { sortEventsByOrder } from "@/lib/event-utils";
+import {
+  getComputedMeetView,
+  hasRealResults,
+  hasSimulatedData,
+  type ViewMode,
+} from "@/lib/meet-simulate-compute";
 
-export default async function MeetAthletesPage({
+function parseViewParam(param: string | null): ViewMode {
+  if (param === "simulated" || param === "real" || param === "hybrid") return param;
+  return "simulated";
+}
+
+export default async function ViewMeetAthletesPage({
   params,
+  searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ shareToken: string }>;
+  searchParams: Promise<{ view?: string }>;
 }) {
-  const { id } = await params;
+  const { shareToken } = await params;
+  const { view: viewParam } = await searchParams;
+  const view = parseViewParam(viewParam ?? null);
 
   const meet = await prisma.meet.findUnique({
-    where: { id },
+    where: { shareToken },
     include: {
       meetTeams: {
         include: {
@@ -41,11 +54,7 @@ export default async function MeetAthletesPage({
       relayEntries: {
         include: {
           team: {
-            select: {
-              id: true,
-              name: true,
-              primaryColor: true,
-            },
+            select: { id: true, name: true, primaryColor: true },
           },
           event: true,
         },
@@ -57,21 +66,41 @@ export default async function MeetAthletesPage({
     notFound();
   }
 
-  const lineupAthleteIds = new Set(meet.meetLineups.map((l) => l.athleteId));
+  const realResultsEventIds = meet.realResultsEventIds
+    ? (JSON.parse(meet.realResultsEventIds) as string[])
+    : [];
+  const individualScoring = meet.individualScoring
+    ? (JSON.parse(meet.individualScoring) as Record<string, number>)
+    : {};
+  const relayScoring = meet.relayScoring
+    ? (JSON.parse(meet.relayScoring) as Record<string, number>)
+    : {};
+  const meetForCompute = { ...meet, individualScoring, relayScoring };
 
-  // Collect athlete IDs that appear in any relay's members
+  const { meetLineups, relayEntries, meetTeams } = getComputedMeetView(
+    meetForCompute,
+    view,
+    realResultsEventIds
+  );
+
+  const hasDataForView =
+    view === "real"
+      ? hasRealResults(meet, realResultsEventIds)
+      : hasSimulatedData(meet);
+
+  const lineupAthleteIds = new Set(meetLineups.map((l) => l.athleteId));
   const relayMemberIds = new Set<string>();
-  meet.relayEntries.forEach((entry) => {
-    if (!entry.members) return;
+  relayEntries.forEach((entry) => {
+    const e = entry as { members?: string | null };
+    if (!e.members) return;
     try {
-      const ids = JSON.parse(entry.members) as (string | null)[];
+      const ids = JSON.parse(e.members) as (string | null)[];
       ids.forEach((id) => {
         if (id && typeof id === "string") relayMemberIds.add(id);
       });
     } catch (_) {}
   });
   const relayOnlyIds = [...relayMemberIds].filter((aid) => !lineupAthleteIds.has(aid));
-
   const relayOnlyAthletes =
     relayOnlyIds.length > 0
       ? await prisma.athlete.findMany({
@@ -84,49 +113,51 @@ export default async function MeetAthletesPage({
         })
       : [];
 
-  const individualScoring = meet.individualScoring
-    ? (JSON.parse(meet.individualScoring) as Record<string, number>)
-    : {};
-  const relayScoring = meet.relayScoring
-    ? (JSON.parse(meet.relayScoring) as Record<string, number>)
-    : {};
+  if (!hasDataForView) {
+    const emptyMessage =
+      view === "real"
+        ? "No real results entered yet."
+        : view === "simulated"
+          ? "No seed times or entries to simulate."
+          : "No data for hybrid view.";
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900">Athlete Summary</h2>
+          <p className="text-slate-600 mt-1">{meet.name}</p>
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <p className="text-slate-600">{emptyMessage}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  const selectedEventIds = meet.selectedEvents
-    ? (JSON.parse(meet.selectedEvents) as string[])
-    : [];
-  const eventOrder = meet.eventOrder
-    ? (JSON.parse(meet.eventOrder) as string[])
-    : null;
+  const selectedEventIds = meet.selectedEvents ? (JSON.parse(meet.selectedEvents) as string[]) : [];
+  const eventOrder = meet.eventOrder ? (JSON.parse(meet.eventOrder) as string[]) : null;
   const eventsUnsorted = await prisma.event.findMany({
     where: { id: { in: selectedEventIds } },
   });
   const events = sortEventsByOrder(eventsUnsorted, eventOrder);
 
   const testSpotAthleteIds: string[] = [];
-  meet.meetTeams?.forEach((mt) => {
+  meetTeams?.forEach((mt) => {
     if (mt.testSpotAthleteIds) {
       try {
-        const ids = JSON.parse(mt.testSpotAthleteIds) as string[];
-        testSpotAthleteIds.push(...ids);
+        testSpotAthleteIds.push(...(JSON.parse(mt.testSpotAthleteIds) as string[]));
       } catch (_) {}
     }
   });
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Athlete Summary</h1>
-          <p className="text-slate-600 mt-1">{meet.name}</p>
-        </div>
-        <BackToMeetButton meetId={id} />
+      <div>
+        <h2 className="text-2xl font-bold text-slate-900">Athlete Summary</h2>
+        <p className="text-slate-600 mt-1">{meet.name}</p>
       </div>
 
-      {/* Navigation */}
-      <MeetNavigation meetId={id} status={meet.status} />
-
-      {/* Athlete Summary Table */}
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Athlete Summary</CardTitle>
@@ -136,16 +167,15 @@ export default async function MeetAthletesPage({
         </CardHeader>
         <CardContent>
           <MeetAthleteSummaryTable
-            meetLineups={meet.meetLineups}
-            relayEntries={meet.relayEntries}
+            meetLineups={meetLineups}
+            relayEntries={relayEntries}
             relayOnlyAthletes={relayOnlyAthletes}
             events={events}
             individualScoring={individualScoring}
             relayScoring={relayScoring}
             scoringPlaces={meet.scoringPlaces}
             testSpotAthleteIds={testSpotAthleteIds}
-            meetId={id}
-            meetTeams={meet.meetTeams.map((mt) => ({
+            meetTeams={meetTeams.map((mt) => ({
               teamId: mt.teamId,
               sensitivityVariantAthleteId: (mt as { sensitivityVariantAthleteId?: string | null }).sensitivityVariantAthleteId,
               sensitivityVariant: (mt as { sensitivityVariant?: string | null }).sensitivityVariant,

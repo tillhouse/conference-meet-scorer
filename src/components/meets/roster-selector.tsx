@@ -232,9 +232,6 @@ export function RosterSelector({
       } else {
         body.sensitivityAthleteIds = [];
       }
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'roster-selector.tsx:before-fetch',message:'Roster save payload',data:{bodyKeys:Object.keys(body),sensitivityAthleteIds:body.sensitivityAthleteIds,sensitivityPercent:body.sensitivityPercent},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
-      // #endregion
       const response = await fetch(`/api/meets/${meetId}/rosters/${meetTeam.teamId}`, {
         method: "POST",
         headers: {
@@ -245,9 +242,6 @@ export function RosterSelector({
 
       if (!response.ok) {
         const error = await response.json();
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'roster-selector.tsx:error-response',message:'Roster save error',data:{errorMsg:error.error,detailsType:typeof error.details,detailsIsArray:Array.isArray(error.details),detailsLength:error.details?.length,firstIssue:error.details?.[0]},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
-        // #endregion
         const detailsStr = Array.isArray(error.details) && error.details.length > 0
           ? error.details.map((d: { message?: string }) => d.message).filter(Boolean).join("; ")
           : (typeof error.details === "string" ? error.details : "");

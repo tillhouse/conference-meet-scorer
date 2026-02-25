@@ -261,6 +261,9 @@ model Meet {
   scoringMode        String? @default("simulated") // "simulated" | "real" | "hybrid"
   realResultsEventIds String? // JSON array of event IDs that have had real results applied (for hybrid)
 
+  // Public view-only share link (unguessable token; null = not shared)
+  shareToken         String?  @unique
+
   team        Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
   teamAccount Team?   @relation("TeamAccountMeets", fields: [teamAccountId], references: [id], onDelete: SetNull)
   conference  Conference?  @relation(fields: [conferenceId], references: [id], onDelete: SetNull)
@@ -353,6 +356,9 @@ model MeetLineup {
   sensitivityPlaceWorse   Int?
   sensitivityPointsWorse  Float?
 
+  // Parsed splits from real results (Hytek): reactionTimeSeconds, cumulativeSplits, subSplits
+  splitsData String?
+
   meet    Meet    @relation(fields: [meetId], references: [id], onDelete: Cascade)
   athlete Athlete @relation(fields: [athleteId], references: [id], onDelete: Cascade)
   event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
@@ -390,6 +396,9 @@ model RelayEntry {
   // Individual leg times and settings (JSON arrays)
   legTimes String? // JSON: ["19.95", "20.10", null, "19.88"] - individual leg times
   useRelaySplits String? // JSON: [false, true, true, true] - whether each leg uses relay split
+
+  // Parsed splits from real results (Hytek): legs[], relayCumulativeAt50
+  splitsData String?
 
   meet  Meet  @relation(fields: [meetId], references: [id], onDelete: Cascade)
   team  Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)

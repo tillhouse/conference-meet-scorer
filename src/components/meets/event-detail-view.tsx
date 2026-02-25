@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, Fragment } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -23,9 +23,10 @@ import {
 } from "@/components/ui/select";
 import { formatName, formatTeamName, formatTeamRelayLabel, normalizeTimeFormat, parseTimeToSeconds, formatSecondsToTime } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Edit2, Save, X, ChevronDown, ChevronRight } from "lucide-react";
+import { Edit2, Save, X, ChevronDown, ChevronRight, BarChart2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { SplitsDetailView, type IndividualSplitsData, type RelaySplitsData } from "@/components/meets/splits-detail-view";
 
 interface MeetTeamSensitivity {
   teamId: string;
@@ -68,6 +69,7 @@ interface MeetLineup {
     name: string;
     eventType: string;
   };
+  splitsData?: string | null;
 }
 
 interface RelayEntry {
@@ -84,6 +86,7 @@ interface RelayEntry {
   points: number | null;
   members: string | null;
   legTimes: string | null; // JSON array of leg times e.g. ["19.95", "20.10", null, "19.88"]
+  splitsData?: string | null;
   team: {
     id: string;
     name: string;
@@ -128,6 +131,8 @@ interface EventDetailViewProps {
   testSpotAthleteIds?: string[];
   /** Meet teams with sensitivity fields (for variant-specific place/points and scenario toggle) */
   meetTeams?: MeetTeamSensitivity[];
+  /** When true, hide edit toolbar and re-run simulation (e.g. public view-only share) */
+  readOnly?: boolean;
 }
 
 interface TeamEventStats {
@@ -152,6 +157,7 @@ interface TeamEventStats {
         displayTime?: string | null;
         teamName?: string;
         teamColor?: string | null;
+        year?: string | null;
         /** Relay shorthand for Relay column (e.g. "PRIN") */
         teamRelayLabel?: string;
         lineupId?: string;
@@ -174,6 +180,7 @@ export function EventDetailView({
   meetId,
   testSpotAthleteIds = [],
   meetTeams = [],
+  readOnly = false,
 }: EventDetailViewProps) {
   const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
   const meetTeamsByTeamId = useMemo(() => {
@@ -185,7 +192,63 @@ export function EventDetailView({
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingTimes, setEditingTimes] = useState<Map<string, string>>(new Map());
   const [saving, setSaving] = useState(false);
-  const [expandedRelayId, setExpandedRelayId] = useState<string | null>(null);
+  const [clearingResults, setClearingResults] = useState(false);
+  const [expandedLineupId, setExpandedLineupId] = useState<string | null>(null);
+
+  const hasSplitsData = useCallback(
+    (lineupId: string | undefined) => {
+      if (!lineupId) return false;
+      if (event.eventType === "relay") {
+        return relayEntries.some((r) => r.id === lineupId && r.splitsData);
+      }
+      return meetLineups.some((l) => l.id === lineupId && l.splitsData);
+    },
+    [event.eventType, meetLineups, relayEntries]
+  );
+
+  const getSplitsPayloadForEntry = useCallback(
+    (entry: { lineupId?: string; athleteName: string; teamRelayLabel?: string; time: string | null }) => {
+      if (!entry.lineupId) return null;
+      const isRelay = event.eventType === "relay";
+      if (isRelay) {
+        const relay = relayEntries.find((r) => r.id === entry.lineupId);
+        if (!relay?.splitsData) return null;
+        let parsed: RelaySplitsData | null = null;
+        try {
+          parsed = JSON.parse(relay.splitsData) as RelaySplitsData;
+        } catch {
+          return null;
+        }
+        return {
+          type: "relay" as const,
+          title: entry.teamRelayLabel ?? entry.athleteName,
+          eventName: event.name,
+          finalTime: relay.finalTime ?? entry.time,
+          splitsData: parsed,
+        };
+      }
+      const lineup = meetLineups.find((l) => l.id === entry.lineupId);
+      if (!lineup?.splitsData) return null;
+      let parsed: IndividualSplitsData | null = null;
+      try {
+        parsed = JSON.parse(lineup.splitsData) as IndividualSplitsData;
+      } catch {
+        return null;
+      }
+      return {
+        type: "individual" as const,
+        title: entry.athleteName,
+        eventName: event.name,
+        finalTime: lineup.finalTime ?? entry.time,
+        splitsData: parsed,
+      };
+    },
+    [event.eventType, event.name, meetLineups, relayEntries]
+  );
+
+  const toggleExpanded = useCallback((lineupId: string | undefined) => {
+    setExpandedLineupId((prev) => (prev === lineupId ? null : lineupId ?? null));
+  }, []);
 
   // Calculate A/B/C final ranges
   const aFinalRange = { min: 1, max: Math.min(8, scoringPlaces) };
@@ -204,6 +267,20 @@ export function EventDetailView({
     const overrideTimeSeconds = 'overrideTimeSeconds' in lineup ? lineup.overrideTimeSeconds : null;
     return overrideTimeSeconds ?? lineup.seedTimeSeconds;
   }, []);
+
+  /** Return true if placeA and placeB are in the same final tier (A/B/C/non-scorer). */
+  const sameFinalTier = useCallback(
+    (placeA: number, placeB: number) => {
+      const tier = (p: number) => {
+        if (p >= aFinalRange.min && p <= aFinalRange.max) return "A";
+        if (p >= bFinalRange.min && p <= bFinalRange.max) return "B";
+        if (p >= cFinalRange.min && p <= cFinalRange.max) return "C";
+        return "N";
+      };
+      return tier(placeA) === tier(placeB);
+    },
+    [aFinalRange, bFinalRange, cFinalRange]
+  );
 
   // Process individual events
   const teamStats = useMemo(() => {
@@ -225,96 +302,149 @@ export function EventDetailView({
       });
     });
 
-    // Sort lineups by time/score (real result > override > seed)
-    const sortedLineups = [...meetLineups].sort((a, b) => {
+    // Only show entries that have some time data (final, override, or seed); hide "ghost" lineups left after clear
+    const lineupsWithTime = meetLineups.filter(
+      (l) => l.finalTime != null || l.overrideTime != null || l.seedTime != null
+    );
+
+    // Sort lineups: when stored place exists, sort by place then time so applied results keep correct order; else by time only
+    const sortedLineups = [...lineupsWithTime].sort((a, b) => {
+      const aPlace = a.place ?? Infinity;
+      const bPlace = b.place ?? Infinity;
+      if (aPlace !== bPlace) return aPlace - bPlace;
       const aOverride = 'overrideTimeSeconds' in a ? a.overrideTimeSeconds : null;
       const bOverride = 'overrideTimeSeconds' in b ? b.overrideTimeSeconds : null;
       const aTime = (a.finalTimeSeconds ?? aOverride ?? a.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
       const bTime = (b.finalTimeSeconds ?? bOverride ?? b.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
-
-      if (event.eventType === "diving") {
-        return bTime - aTime; // Higher is better
-      } else {
-        return aTime - bTime; // Lower is better
-      }
+      if (event.eventType === "diving") return bTime - aTime;
+      return aTime - bTime;
     });
 
-    // Calculate places and points (use sensitivity variant place/points when applicable)
-    sortedLineups.forEach((lineup, index) => {
-      const teamId = lineup.athlete.team.id;
-      const meetTeam = meetTeamsByTeamId.get(teamId);
-      const useSensitivityVariant =
-        meetTeam?.sensitivityVariantAthleteId &&
-        lineup.athleteId === meetTeam.sensitivityVariantAthleteId &&
-        (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
-      let place: number;
-      let points: number;
-      if (useSensitivityVariant && meetTeam.sensitivityVariant === "better" && lineup.sensitivityPlaceBetter != null && lineup.sensitivityPointsBetter != null) {
-        place = lineup.sensitivityPlaceBetter;
-        points = lineup.sensitivityPointsBetter;
-      } else if (useSensitivityVariant && meetTeam.sensitivityVariant === "worse" && lineup.sensitivityPlaceWorse != null && lineup.sensitivityPointsWorse != null) {
-        place = lineup.sensitivityPlaceWorse;
-        points = lineup.sensitivityPointsWorse;
-      } else {
-        place = lineup.place !== null ? lineup.place : index + 1;
-        if (lineup.points !== null) {
-          points = lineup.points;
-        } else if (place <= scoringPlaces) {
-          points = individualScoring[place.toString()] || 0;
+    // Group consecutive lineups with the same time (tie); use tolerance 0.01s for float comparison
+    const TIME_TIE_TOLERANCE = 0.01;
+    const tieGroups: typeof sortedLineups[] = [];
+    let i = 0;
+    while (i < sortedLineups.length) {
+      const first = sortedLineups[i]!;
+      const firstSec = getEffectiveTimeSeconds(first) ?? (event.eventType === "diving" ? -Infinity : Infinity);
+      const group: typeof sortedLineups = [first];
+      i++;
+      while (i < sortedLineups.length) {
+        const next = sortedLineups[i]!;
+        const nextSec = getEffectiveTimeSeconds(next) ?? (event.eventType === "diving" ? -Infinity : Infinity);
+        const diff = event.eventType === "diving" ? Math.abs(nextSec - firstSec) : Math.abs(nextSec - firstSec);
+        if (diff <= TIME_TIE_TOLERANCE) {
+          group.push(next);
+          i++;
         } else {
-          points = 0;
+          break;
         }
       }
+      tieGroups.push(group);
+    }
 
-      const stats = statsMap.get(teamId);
-      if (!stats) return;
+    // Assign place and points per group; prefer stored place/points when all in group have the same stored place (applied results)
+    let nextPlace = 1;
+    tieGroups.forEach((group) => {
+      const hasStoredPlace = group.every((l) => l.place != null) && new Set(group.map((l) => l.place)).size === 1;
+      const storedPlace = hasStoredPlace ? group[0]!.place! : null;
+      const placeStart = storedPlace ?? nextPlace;
+      const placeEnd = placeStart + group.length - 1;
+      const inSameTier = group.length === 1 || sameFinalTier(placeStart, placeEnd);
+      const mergeTie = group.length > 1 && inSameTier;
 
-      // Categorize by final
-      if (place >= aFinalRange.min && place <= aFinalRange.max) {
-        stats.aFinalCount++;
-      } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
-        stats.bFinalCount++;
-      } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
-        stats.cFinalCount++;
-      } else {
-        stats.nonScorerCount++;
-      }
-
-      stats.athleteCount++;
-      stats.totalPoints += points;
-      const baseTimeStr = getEffectiveTime(lineup);
-      let displayTime: string | null | undefined = undefined;
-      if (useSensitivityVariant && meetTeam && (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse")) {
-        const baseSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds ?? (baseTimeStr ? parseTimeToSeconds(baseTimeStr) : null);
-        if (baseSeconds != null) {
-          const pct = (meetTeam.sensitivityPercent ?? 1) / 100;
-          const isDiving = event.eventType === "diving";
-          let adjustedSeconds: number;
-          if (meetTeam.sensitivityVariant === "better") {
-            adjustedSeconds = isDiving ? baseSeconds * (1 + pct) : baseSeconds * (1 - pct);
+      for (let g = 0; g < group.length; g++) {
+        const lineup = group[g]!;
+        const teamId = lineup.athlete.team.id;
+        const meetTeam = meetTeamsByTeamId.get(teamId);
+        const useSensitivityVariant =
+          meetTeam?.sensitivityVariantAthleteId &&
+          lineup.athleteId === meetTeam.sensitivityVariantAthleteId &&
+          (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse");
+        let place: number;
+        let points: number;
+        if (useSensitivityVariant && meetTeam?.sensitivityVariant === "better" && lineup.sensitivityPlaceBetter != null && lineup.sensitivityPointsBetter != null) {
+          place = lineup.sensitivityPlaceBetter;
+          points = lineup.sensitivityPointsBetter;
+        } else if (useSensitivityVariant && meetTeam?.sensitivityVariant === "worse" && lineup.sensitivityPlaceWorse != null && lineup.sensitivityPointsWorse != null) {
+          place = lineup.sensitivityPlaceWorse;
+          points = lineup.sensitivityPointsWorse;
+        } else {
+          if (mergeTie) {
+            place = placeStart;
+            const hasStoredPoints = group.every((l) => l.points != null);
+            if (hasStoredPoints) {
+              const sum = group.reduce((s, l) => s + (l.points ?? 0), 0);
+              points = group.length > 0 ? sum / group.length : 0;
+            } else {
+              const pointSum = Array.from({ length: group.length }, (_, k) => individualScoring[(placeStart + k).toString()] ?? 0).reduce((a, b) => a + b, 0);
+              points = group.length > 0 ? pointSum / group.length : 0;
+            }
           } else {
-            adjustedSeconds = isDiving ? baseSeconds * (1 - pct) : baseSeconds * (1 + pct);
+            place = placeStart + g;
+            points = lineup.points !== null ? lineup.points : (lineup.finalTime != null && place <= scoringPlaces ? (individualScoring[place.toString()] ?? 0) : 0);
           }
-          displayTime = formatSecondsToTime(Math.round(adjustedSeconds * 100) / 100, isDiving);
         }
+        const stats = statsMap.get(teamId);
+        if (!stats) continue;
+
+        if (place >= aFinalRange.min && place <= aFinalRange.max) {
+          stats.aFinalCount++;
+        } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
+          stats.bFinalCount++;
+        } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
+          stats.cFinalCount++;
+        } else {
+          stats.nonScorerCount++;
+        }
+
+        stats.athleteCount++;
+        stats.totalPoints += points;
+        const baseTimeStr = getEffectiveTime(lineup);
+        // If stored time looks like points (e.g. "13.5" with no colon), use first teammate's time in tie group so display is correct
+        let timeToShow = baseTimeStr;
+        if (mergeTie && baseTimeStr != null && !String(baseTimeStr).includes(":") && parseFloat(String(baseTimeStr)) < 100) {
+          const canonical = group.find((l) => {
+            const t = getEffectiveTime(l);
+            return t != null && String(t).includes(":");
+          });
+          if (canonical) timeToShow = getEffectiveTime(canonical);
+        }
+        let displayTime: string | null | undefined = undefined;
+        if (useSensitivityVariant && meetTeam && (meetTeam.sensitivityVariant === "better" || meetTeam.sensitivityVariant === "worse")) {
+          const baseSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds ?? (timeToShow ? parseTimeToSeconds(timeToShow) : null);
+          if (baseSeconds != null) {
+            const pct = (meetTeam.sensitivityPercent ?? 1) / 100;
+            const isDiving = event.eventType === "diving";
+            let adjustedSeconds: number;
+            if (meetTeam.sensitivityVariant === "better") {
+              adjustedSeconds = isDiving ? baseSeconds * (1 + pct) : baseSeconds * (1 - pct);
+            } else {
+              adjustedSeconds = isDiving ? baseSeconds * (1 - pct) : baseSeconds * (1 + pct);
+            }
+            displayTime = formatSecondsToTime(Math.round(adjustedSeconds * 100) / 100, isDiving);
+          }
+        }
+        stats.entries.push({
+          athleteId: lineup.id,
+          athleteName: formatName(lineup.athlete.firstName, lineup.athlete.lastName),
+          realAthleteId: lineup.athlete.id,
+          year: lineup.athlete.year ?? null,
+          place,
+          points,
+          time: timeToShow ?? baseTimeStr,
+          displayTime: displayTime ?? undefined,
+          teamName: stats.teamName,
+          teamColor: stats.teamColor,
+          lineupId: lineup.id,
+          hasOverride: !!('overrideTime' in lineup && lineup.overrideTime),
+        });
       }
-      stats.entries.push({
-        athleteId: lineup.id,
-        athleteName: formatName(lineup.athlete.firstName, lineup.athlete.lastName),
-        realAthleteId: lineup.athlete.id,
-        place,
-        points,
-        time: baseTimeStr,
-        displayTime: displayTime ?? undefined,
-        teamName: stats.teamName,
-        teamColor: stats.teamColor,
-        lineupId: lineup.id,
-        hasOverride: !!('overrideTime' in lineup && lineup.overrideTime),
-      });
+      nextPlace = placeEnd + 1;
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, meetTeamsByTeamId]);
+  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, event.id, event.name, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, getEffectiveTimeSeconds, sameFinalTier, meetTeamsByTeamId]);
 
   // Process relay entries if this is a relay event
   const relayTeamStats = useMemo(() => {
@@ -337,55 +467,103 @@ export function EventDetailView({
       });
     });
 
-    const sortedRelays = [...relayEntries].sort((a, b) => {
+    const relaysWithTime = relayEntries.filter(
+      (r) => r.finalTime != null || r.overrideTime != null || r.seedTime != null
+    );
+
+    // Sort: by place (non-null first so DQ go last), then by time
+    const sortedRelays = [...relaysWithTime].sort((a, b) => {
+      const aHasPlace = a.place != null ? 0 : 1;
+      const bHasPlace = b.place != null ? 0 : 1;
+      if (aHasPlace !== bHasPlace) return aHasPlace - bHasPlace;
       const aOverride = 'overrideTimeSeconds' in a ? a.overrideTimeSeconds : null;
       const bOverride = 'overrideTimeSeconds' in b ? b.overrideTimeSeconds : null;
-      const aTime = (aOverride ?? a.seedTimeSeconds) ?? Infinity;
-      const bTime = (bOverride ?? b.seedTimeSeconds) ?? Infinity;
+      const aTime = (a.finalTimeSeconds ?? aOverride ?? a.seedTimeSeconds) ?? Infinity;
+      const bTime = (b.finalTimeSeconds ?? bOverride ?? b.seedTimeSeconds) ?? Infinity;
       return aTime - bTime;
     });
 
-    sortedRelays.forEach((relay, index) => {
-      const place = relay.place !== null ? relay.place : index + 1;
-      let points = 0;
-
-      if (relay.points !== null) {
-        points = relay.points;
-      } else if (place <= scoringPlaces) {
-        points = relayScoring[place.toString()] || 0;
+    const RELAY_TIME_TIE_TOLERANCE = 0.01;
+    const relayTieGroups: typeof sortedRelays[] = [];
+    let ri = 0;
+    while (ri < sortedRelays.length) {
+      const first = sortedRelays[ri]!;
+      const firstSec = first.finalTimeSeconds ?? first.overrideTimeSeconds ?? first.seedTimeSeconds ?? Infinity;
+      const group: typeof sortedRelays = [first];
+      ri++;
+      // DQ (place null) stay as single-entry groups; others group by time tie
+      if (first.place == null) {
+        relayTieGroups.push(group);
+        continue;
       }
-
-      const stats = statsMap.get(relay.teamId);
-      if (!stats) return;
-
-      if (place >= aFinalRange.min && place <= aFinalRange.max) {
-        stats.aFinalCount++;
-      } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
-        stats.bFinalCount++;
-      } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
-        stats.cFinalCount++;
-      } else {
-        stats.nonScorerCount++;
+      while (ri < sortedRelays.length) {
+        const next = sortedRelays[ri]!;
+        if (next.place == null) break;
+        const nextSec = next.finalTimeSeconds ?? next.overrideTimeSeconds ?? next.seedTimeSeconds ?? Infinity;
+        if (Math.abs((nextSec ?? Infinity) - (firstSec ?? Infinity)) <= RELAY_TIME_TIE_TOLERANCE) {
+          group.push(next);
+          ri++;
+        } else break;
       }
+      relayTieGroups.push(group);
+    }
 
-      stats.athleteCount++;
-      stats.totalPoints += points;
-      stats.entries.push({
-        athleteId: relay.id,
-        athleteName: formatTeamName(relay.team.name, relay.team.schoolName),
-        place,
-        points,
-        time: getEffectiveTime(relay),
-        teamName: stats.teamName,
-        teamColor: stats.teamColor,
-        teamRelayLabel: formatTeamRelayLabel(relay.team),
-        lineupId: relay.id,
-        hasOverride: !!('overrideTime' in relay && relay.overrideTime),
+    let relayNextPlace = 1;
+    relayTieGroups.forEach((group) => {
+      const isDQGroup = group.length > 0 && group[0]!.place == null;
+      const placeStart = isDQGroup ? null : relayNextPlace;
+      const placeEnd = isDQGroup ? null : relayNextPlace + group.length - 1;
+
+      group.forEach((relay, g) => {
+        const place = isDQGroup ? null : (group.length > 1 && sameFinalTier(placeStart!, placeEnd!) ? placeStart! : placeStart! + g);
+        let points = 0;
+        if (relay.points !== null && !isDQGroup) {
+          points = relay.points;
+        } else if (!isDQGroup && group.length > 1 && sameFinalTier(placeStart!, placeEnd!)) {
+          const pointSum = Array.from({ length: group.length }, (_, k) => relayScoring[(placeStart! + k).toString()] ?? 0).reduce((a, b) => a + b, 0);
+          points = group.length > 0 ? pointSum / group.length : 0;
+        } else if (!isDQGroup && relay.finalTime != null && place != null && place <= scoringPlaces) {
+          points = relayScoring[place.toString()] || 0;
+        }
+
+        const stats = statsMap.get(relay.teamId);
+        if (!stats) return;
+
+        if (place != null) {
+          if (place >= aFinalRange.min && place <= aFinalRange.max) {
+            stats.aFinalCount++;
+          } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
+            stats.bFinalCount++;
+          } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
+            stats.cFinalCount++;
+          } else {
+            stats.nonScorerCount++;
+          }
+        } else {
+          stats.nonScorerCount++;
+        }
+
+        stats.athleteCount++;
+        stats.totalPoints += points;
+        const displayTime = relay.finalTime === "DQ" || relay.finalTime === "XDQ" ? "DQ" : getEffectiveTime(relay);
+        stats.entries.push({
+          athleteId: relay.id,
+          athleteName: formatTeamName(relay.team.name, relay.team.schoolName),
+          place,
+          points,
+          time: displayTime,
+          teamName: stats.teamName,
+          teamColor: stats.teamColor,
+          teamRelayLabel: formatTeamRelayLabel(relay.team),
+          lineupId: relay.id,
+          hasOverride: !!('overrideTime' in relay && relay.overrideTime),
+        });
       });
+      if (!isDQGroup && placeEnd != null) relayNextPlace = placeEnd + 1;
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [relayEntries, teams, relayScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime]);
+  }, [relayEntries, teams, relayScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, sameFinalTier]);
 
   const displayStats = event.eventType === "relay" ? relayTeamStats : teamStats;
 
@@ -454,6 +632,23 @@ export function EventDetailView({
     setEditingTimes(new Map());
     setIsEditMode(false);
   }, []);
+
+  const handleClearResults = useCallback(async () => {
+    if (!meetId || !event?.id) return;
+    if (!confirm("Clear all results (times, places, points, splits) for this event? This cannot be undone.")) return;
+    setClearingResults(true);
+    try {
+      const res = await fetch(`/api/meets/${meetId}/events/${event.id}/results`, { method: "DELETE" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed to clear results");
+      toast.success("Results cleared");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to clear results");
+    } finally {
+      setClearingResults(false);
+    }
+  }, [meetId, event?.id, router]);
 
   // Check if there are any overridden times
   const hasOverrides = useMemo(() => {
@@ -606,16 +801,30 @@ export function EventDetailView({
                         );
                       })}
                 </div>
-                {!isEditMode ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsEditMode(true)}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    Edit Times
-                  </Button>
-                ) : (
+                {!readOnly && !isEditMode ? (
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setIsEditMode(true)}
+                    >
+                      <Edit2 className="h-4 w-4 mr-2" />
+                      Edit Times
+                    </Button>
+                    {hasResults || meetLineups.length > 0 || relayEntries.length > 0 ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleClearResults}
+                        disabled={clearingResults}
+                        className="text-amber-600 border-amber-200 hover:bg-amber-50 hover:text-amber-700"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        {clearingResults ? "Clearing..." : "Clear results"}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : !readOnly ? (
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -635,11 +844,11 @@ export function EventDetailView({
                       {saving ? "Saving..." : "Save"}
                     </Button>
                   </div>
-                )}
+                ) : null}
               </div>
             </CardHeader>
             <CardContent>
-              {displayStats.length === 0 ? (
+              {displayStats.length === 0 || displayStats.every((s) => s.entries.length === 0) ? (
                 <div className="text-center py-8 text-slate-500">
                   No entries in this event.
                 </div>
@@ -647,19 +856,21 @@ export function EventDetailView({
                 <div className="rounded-md border overflow-hidden">
                   <Table className="table-fixed w-full">
                     <colgroup>
-                      <col className="w-[4.5rem]" />
-                      <col className="min-w-0" />
-                      <col className="min-w-0" />
-                      <col className="w-[5.5rem]" />
-                      <col className="w-[3.5rem]" />
+                      <col className="w-[4rem]" />
+                      <col className="w-[16rem]" />
+                      <col className="w-[4rem]" />
+                      <col />
+                      <col className="w-[7.5rem]" />
+                      <col className="w-[6rem]" />
                     </colgroup>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[4.5rem] pr-4">Place</TableHead>
-                        <TableHead className="pl-2">{event.eventType === "relay" ? "Relay" : "Athlete"}</TableHead>
-                        <TableHead>Team</TableHead>
-                        <TableHead className="w-[5.5rem] text-right pr-4">{event.eventType === "diving" ? "Score" : "Time"}</TableHead>
-                        <TableHead className="w-[3.5rem] text-right pl-4">Points</TableHead>
+                        <TableHead className="w-[4rem] pr-2 text-xs font-semibold text-slate-600 uppercase tracking-wide">Place</TableHead>
+                        <TableHead className="w-[16rem] pl-3 pr-4 text-xs font-semibold text-slate-600 uppercase tracking-wide">{event.eventType === "relay" ? "Relay" : "Athlete"}</TableHead>
+                        <TableHead className="w-[4rem] pl-1 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">{event.eventType !== "relay" ? "Year" : ""}</TableHead>
+                        <TableHead className="pr-8 text-xs font-semibold text-slate-600 uppercase tracking-wide">Team</TableHead>
+                        <TableHead className="w-[7.5rem] text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">{event.eventType === "diving" ? "Score" : "Time"}</TableHead>
+                        <TableHead className="w-[6rem] pl-5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Points</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -687,49 +898,52 @@ export function EventDetailView({
                             {aFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-700 hover:bg-slate-700">
-                                  <TableCell colSpan={5} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
                                     A Final (Places {aFinalRange.min}-{aFinalRange.max})
                                   </TableCell>
                                 </TableRow>
                                 {aFinalEntries.map((entry, idx) => {
                                   const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
                                   const splits = relay ? getRelaySplits(relay) : [];
-                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  const isExpanded = expandedLineupId === entry.lineupId;
+                                  const canExpand = !isEditMode && (event.eventType === "relay" || hasSplitsData(entry.lineupId));
+                                  const hasSplits = hasSplitsData(entry.lineupId);
+                                  const onRowClick = canExpand ? () => toggleExpanded(entry.lineupId ?? undefined) : undefined;
+                                  const splitsPayload = getSplitsPayloadForEntry(entry);
+                                  const expansionId = `splits-expand-${entry.lineupId ?? idx}`;
                                   return (
-                                    <>
+                                    <Fragment key={entry.lineupId ?? `a-${idx}`}>
                                       <TableRow
                                         key={`a-${entry.athleteId}-${idx}`}
-                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
-                                        onClick={
-                                          event.eventType === "relay"
-                                            ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null))
-                                            : undefined
-                                        }
-                                        role={event.eventType === "relay" ? "button" : undefined}
-                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${canExpand ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={onRowClick}
+                                        role={onRowClick ? "button" : undefined}
+                                        tabIndex={onRowClick ? 0 : undefined}
+                                        aria-expanded={onRowClick ? isExpanded : undefined}
+                                        aria-controls={onRowClick ? expansionId : undefined}
                                         onKeyDown={
-                                          event.eventType === "relay"
+                                          onRowClick
                                             ? (e) => {
                                                 if (e.key === "Enter" || e.key === " ") {
                                                   e.preventDefault();
-                                                  setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null));
+                                                  toggleExpanded(entry.lineupId ?? undefined);
                                                 }
                                               }
                                             : undefined
                                         }
                                       >
-                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                        <TableCell className="w-[4rem] font-bold pr-2">
                                           <span className="flex items-center gap-2">
                                             <span className="inline-flex w-5 shrink-0 items-center justify-center">
-                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                              {event.eventType === "relay" || hasSplits ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
                                             </span>
-                                            {entry.place}
+                                            {entry.place ?? "—"}
                                             {entry.place === 1 && " 🥇"}
                                             {entry.place === 2 && " 🥈"}
                                             {entry.place === 3 && " 🥉"}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="font-medium pl-2">
+                                        <TableCell className="w-[16rem] font-medium pl-3 pr-4">
                                           {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
                                             <span className="inline-flex items-center gap-1.5">
                                               {entry.athleteName}
@@ -739,7 +953,10 @@ export function EventDetailView({
                                             </span>
                                           )}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="w-[4rem] pl-1 text-left text-sm text-slate-500">
+                                          {event.eventType !== "relay" ? (entry.year ?? "—") : ""}
+                                        </TableCell>
+                                        <TableCell className="pr-8">
                                           <span
                                             style={
                                               entry.teamColor
@@ -750,31 +967,50 @@ export function EventDetailView({
                                             {entry.teamName}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="w-[5.5rem] text-right pr-4">
-                                          {renderTimeCell(entry)}
+                                        <TableCell className="w-[7.5rem] text-right">
+                                          <span className="inline-flex items-center justify-end gap-1 w-full">
+                                            {renderTimeCell(entry)}
+                                            {hasSplits && <BarChart2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
+                                          </span>
                                         </TableCell>
-                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">
+                                        <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">
                                           {entry.points > 0 ? entry.points.toFixed(1) : "-"}
                                         </TableCell>
                                       </TableRow>
-                                      {event.eventType === "relay" && isExpanded && splits.length > 0 &&
+                                      {isExpanded && hasSplits && splitsPayload && (
+                                        <TableRow key={`a-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
+                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionId}>
+                                            <SplitsDetailView
+                                              type={splitsPayload.type}
+                                              title={splitsPayload.title}
+                                              eventName={splitsPayload.eventName}
+                                              finalTime={splitsPayload.finalTime}
+                                              splitsData={splitsPayload.splitsData}
+                                              athleteIdToName={athleteIdToName}
+                                              compact
+                                            />
+                                          </TableCell>
+                                        </TableRow>
+                                      )}
+                                      {isExpanded && !hasSplits && event.eventType === "relay" && splits.length > 0 &&
                                         splits.map((split, i) => (
                                           <TableRow
                                             key={`a-${entry.athleteId}-${idx}-split-${i}`}
                                             className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}
                                           >
-                                            <TableCell className="w-[4.5rem] pr-4" />
+                                            <TableCell className="w-[4rem] pr-2" />
                                             <TableCell className="pl-2 text-sm italic text-slate-500 py-1.5">
                                               {split.name}
                                             </TableCell>
                                             <TableCell />
-                                            <TableCell className="w-[5.5rem] text-right pr-4 text-sm italic font-mono text-slate-500 tabular-nums py-1.5">
+                                            <TableCell />
+                                            <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">
                                               {split.time ? normalizeTimeFormat(split.time) : "—"}
                                             </TableCell>
-                                            <TableCell className="w-[3.5rem] pl-4" />
+                                            <TableCell className="w-[6rem] pl-5" />
                                           </TableRow>
                                         ))}
-                                    </>
+                                    </Fragment>
                                   );
                                 })}
                               </>
@@ -784,33 +1020,40 @@ export function EventDetailView({
                             {bFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-600 hover:bg-slate-600">
-                                  <TableCell colSpan={5} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
                                     B Final (Places {bFinalRange.min}-{bFinalRange.max})
                                   </TableCell>
                                 </TableRow>
                                 {bFinalEntries.map((entry, idx) => {
                                   const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
                                   const splits = relay ? getRelaySplits(relay) : [];
-                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  const isExpanded = expandedLineupId === entry.lineupId;
+                                  const canExpandB = !isEditMode && (event.eventType === "relay" || hasSplitsData(entry.lineupId));
+                                  const hasSplitsB = hasSplitsData(entry.lineupId);
+                                  const onRowClickB = canExpandB ? () => toggleExpanded(entry.lineupId ?? undefined) : undefined;
+                                  const splitsPayloadB = getSplitsPayloadForEntry(entry);
+                                  const expansionIdB = `splits-expand-b-${entry.lineupId ?? idx}`;
                                   return (
-                                    <>
+                                    <Fragment key={entry.lineupId ?? `b-${idx}`}>
                                       <TableRow
                                         key={`b-${entry.athleteId}-${idx}`}
-                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
-                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
-                                        role={event.eventType === "relay" ? "button" : undefined}
-                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
-                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${canExpandB ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={onRowClickB}
+                                        role={onRowClickB ? "button" : undefined}
+                                        tabIndex={onRowClickB ? 0 : undefined}
+                                        aria-expanded={onRowClickB ? isExpanded : undefined}
+                                        aria-controls={onRowClickB ? expansionIdB : undefined}
+                                        onKeyDown={onRowClickB ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(entry.lineupId ?? undefined); } } : undefined}
                                       >
-                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                        <TableCell className="w-[4rem] font-bold pr-2">
                                           <span className="flex items-center gap-2">
                                             <span className="inline-flex w-5 shrink-0 items-center justify-center">
-                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                              {event.eventType === "relay" || hasSplitsB ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
                                             </span>
-                                            {entry.place}
+                                            {entry.place ?? "—"}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="font-medium pl-2">
+                                        <TableCell className="w-[16rem] font-medium pl-3 pr-4">
                                           {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
                                             <span className="inline-flex items-center gap-1.5">
                                               {entry.athleteName}
@@ -820,22 +1063,46 @@ export function EventDetailView({
                                             </span>
                                           )}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="w-[4rem] pl-1 text-left text-sm text-slate-500">
+                                          {event.eventType !== "relay" ? (entry.year ?? "—") : ""}
+                                        </TableCell>
+                                        <TableCell className="pr-8">
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
                                         </TableCell>
-                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
-                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                        <TableCell className="w-[7.5rem] text-right">
+                                          <span className="inline-flex items-center justify-end gap-1 w-full">
+                                            {renderTimeCell(entry)}
+                                            {hasSplitsB && <BarChart2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
                                       </TableRow>
-                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                      {isExpanded && hasSplitsB && splitsPayloadB && (
+                                        <TableRow key={`b-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
+                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdB}>
+                                            <SplitsDetailView
+                                              type={splitsPayloadB.type}
+                                              title={splitsPayloadB.title}
+                                              eventName={splitsPayloadB.eventName}
+                                              finalTime={splitsPayloadB.finalTime}
+                                              splitsData={splitsPayloadB.splitsData}
+                                              athleteIdToName={athleteIdToName}
+                                              compact
+                                            />
+                                          </TableCell>
+                                        </TableRow>
+                                      )}
+                                      {isExpanded && !hasSplitsB && event.eventType === "relay" && splits.length > 0 && splits.map((split, i) => (
                                         <TableRow key={`b-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
-                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="w-[4rem] pr-2" />
                                           <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
                                           <TableCell />
-                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
-                                          <TableCell className="w-[3.5rem]" />
+                                          <TableCell />
+                                          <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[6rem] pl-5" />
                                         </TableRow>
                                       ))}
-                                    </>
+                                    </Fragment>
                                   );
                                 })}
                               </>
@@ -845,33 +1112,40 @@ export function EventDetailView({
                             {cFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-500 hover:bg-slate-500">
-                                  <TableCell colSpan={5} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
                                     C Final (Places {cFinalRange.min}-{cFinalRange.max})
                                   </TableCell>
                                 </TableRow>
                                 {cFinalEntries.map((entry, idx) => {
                                   const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
                                   const splits = relay ? getRelaySplits(relay) : [];
-                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  const isExpanded = expandedLineupId === entry.lineupId;
+                                  const canExpandC = !isEditMode && (event.eventType === "relay" || hasSplitsData(entry.lineupId));
+                                  const hasSplitsC = hasSplitsData(entry.lineupId);
+                                  const onRowClickC = canExpandC ? () => toggleExpanded(entry.lineupId ?? undefined) : undefined;
+                                  const splitsPayloadC = getSplitsPayloadForEntry(entry);
+                                  const expansionIdC = `splits-expand-c-${entry.lineupId ?? idx}`;
                                   return (
-                                    <>
+                                    <Fragment key={entry.lineupId ?? `c-${idx}`}>
                                       <TableRow
                                         key={`c-${entry.athleteId}-${idx}`}
-                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
-                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
-                                        role={event.eventType === "relay" ? "button" : undefined}
-                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
-                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${canExpandC ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={onRowClickC}
+                                        role={onRowClickC ? "button" : undefined}
+                                        tabIndex={onRowClickC ? 0 : undefined}
+                                        aria-expanded={onRowClickC ? isExpanded : undefined}
+                                        aria-controls={onRowClickC ? expansionIdC : undefined}
+                                        onKeyDown={onRowClickC ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(entry.lineupId ?? undefined); } } : undefined}
                                       >
-                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                        <TableCell className="w-[4rem] font-bold pr-2">
                                           <span className="flex items-center gap-2">
                                             <span className="inline-flex w-5 shrink-0 items-center justify-center">
-                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                              {event.eventType === "relay" || hasSplitsC ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
                                             </span>
-                                            {entry.place}
+                                            {entry.place ?? "—"}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="font-medium pl-2">
+                                        <TableCell className="w-[16rem] font-medium pl-3 pr-4">
                                           {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
                                             <span className="inline-flex items-center gap-1.5">
                                               {entry.athleteName}
@@ -881,22 +1155,46 @@ export function EventDetailView({
                                             </span>
                                           )}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="w-[4rem] pl-1 text-left text-sm text-slate-500">
+                                          {event.eventType !== "relay" ? (entry.year ?? "—") : ""}
+                                        </TableCell>
+                                        <TableCell className="pr-8">
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
                                         </TableCell>
-                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
-                                        <TableCell className="w-[3.5rem] text-right font-semibold text-green-600 pl-4">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                        <TableCell className="w-[7.5rem] text-right">
+                                          <span className="inline-flex items-center justify-end gap-1 w-full">
+                                            {renderTimeCell(entry)}
+                                            {hasSplitsC && <BarChart2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
                                       </TableRow>
-                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                      {isExpanded && hasSplitsC && splitsPayloadC && (
+                                        <TableRow key={`c-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
+                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdC}>
+                                            <SplitsDetailView
+                                              type={splitsPayloadC.type}
+                                              title={splitsPayloadC.title}
+                                              eventName={splitsPayloadC.eventName}
+                                              finalTime={splitsPayloadC.finalTime}
+                                              splitsData={splitsPayloadC.splitsData}
+                                              athleteIdToName={athleteIdToName}
+                                              compact
+                                            />
+                                          </TableCell>
+                                        </TableRow>
+                                      )}
+                                      {isExpanded && !hasSplitsC && event.eventType === "relay" && splits.length > 0 && splits.map((split, i) => (
                                         <TableRow key={`c-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
-                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="w-[4rem] pr-2" />
                                           <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
                                           <TableCell />
-                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
-                                          <TableCell className="w-[3.5rem]" />
+                                          <TableCell />
+                                          <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[6rem] pl-5" />
                                         </TableRow>
                                       ))}
-                                    </>
+                                    </Fragment>
                                   );
                                 })}
                               </>
@@ -906,33 +1204,40 @@ export function EventDetailView({
                             {nonScorerEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-400 hover:bg-slate-400">
-                                  <TableCell colSpan={5} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
                                     Non-Scorers (Places {cFinalRange.max + 1}+)
                                   </TableCell>
                                 </TableRow>
                                 {nonScorerEntries.map((entry, idx) => {
                                   const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
                                   const splits = relay ? getRelaySplits(relay) : [];
-                                  const isExpanded = expandedRelayId === entry.lineupId;
+                                  const isExpanded = expandedLineupId === entry.lineupId;
+                                  const canExpandN = !isEditMode && (event.eventType === "relay" || hasSplitsData(entry.lineupId));
+                                  const hasSplitsN = hasSplitsData(entry.lineupId);
+                                  const onRowClickN = canExpandN ? () => toggleExpanded(entry.lineupId ?? undefined) : undefined;
+                                  const splitsPayloadN = getSplitsPayloadForEntry(entry);
+                                  const expansionIdN = `splits-expand-n-${entry.lineupId ?? idx}`;
                                   return (
-                                    <>
+                                    <Fragment key={entry.lineupId ?? `n-${idx}`}>
                                       <TableRow
                                         key={`nonscorer-${entry.athleteId}-${idx}`}
-                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${event.eventType === "relay" ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
-                                        onClick={event.eventType === "relay" ? () => setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)) : undefined}
-                                        role={event.eventType === "relay" ? "button" : undefined}
-                                        tabIndex={event.eventType === "relay" ? 0 : undefined}
-                                        onKeyDown={event.eventType === "relay" ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandedRelayId((prev) => (prev === entry.lineupId ? null : entry.lineupId ?? null)); } } : undefined}
+                                        className={`${idx % 2 === 0 ? "bg-slate-50" : "bg-white"} ${canExpandN ? "cursor-pointer hover:bg-slate-100/80" : ""}`}
+                                        onClick={onRowClickN}
+                                        role={onRowClickN ? "button" : undefined}
+                                        tabIndex={onRowClickN ? 0 : undefined}
+                                        aria-expanded={onRowClickN ? isExpanded : undefined}
+                                        aria-controls={onRowClickN ? expansionIdN : undefined}
+                                        onKeyDown={onRowClickN ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(entry.lineupId ?? undefined); } } : undefined}
                                       >
-                                        <TableCell className="w-[4.5rem] font-bold pr-4">
+                                        <TableCell className="w-[4rem] font-bold pr-2">
                                           <span className="flex items-center gap-2">
                                             <span className="inline-flex w-5 shrink-0 items-center justify-center">
-                                              {event.eventType === "relay" ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                              {event.eventType === "relay" || hasSplitsN ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
                                             </span>
-                                            {entry.place || "-"}
+                                            {entry.place ?? "—"}
                                           </span>
                                         </TableCell>
-                                        <TableCell className="font-medium pl-2">
+                                        <TableCell className="w-[16rem] font-medium pl-3 pr-4">
                                           {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
                                             <span className="inline-flex items-center gap-1.5">
                                               {entry.athleteName}
@@ -942,22 +1247,46 @@ export function EventDetailView({
                                             </span>
                                           )}
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell className="w-[4rem] pl-1 text-left text-sm text-slate-500">
+                                          {event.eventType !== "relay" ? (entry.year ?? "—") : ""}
+                                        </TableCell>
+                                        <TableCell className="pr-8">
                                           <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
                                         </TableCell>
-                                        <TableCell className="w-[5.5rem] text-right pr-4">{renderTimeCell(entry)}</TableCell>
-                                        <TableCell className="w-[3.5rem] text-right font-semibold text-slate-400 pl-4">-</TableCell>
+                                        <TableCell className="w-[7.5rem] text-right">
+                                          <span className="inline-flex items-center justify-end gap-1 w-full">
+                                            {renderTimeCell(entry)}
+                                            {hasSplitsN && <BarChart2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell className="w-[6rem] text-right font-semibold text-slate-400 pl-5">-</TableCell>
                                       </TableRow>
-                                      {event.eventType === "relay" && isExpanded && splits.length > 0 && splits.map((split, i) => (
+                                      {isExpanded && hasSplitsN && splitsPayloadN && (
+                                        <TableRow key={`nonscorer-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
+                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdN}>
+                                            <SplitsDetailView
+                                              type={splitsPayloadN.type}
+                                              title={splitsPayloadN.title}
+                                              eventName={splitsPayloadN.eventName}
+                                              finalTime={splitsPayloadN.finalTime}
+                                              splitsData={splitsPayloadN.splitsData}
+                                              athleteIdToName={athleteIdToName}
+                                              compact
+                                            />
+                                          </TableCell>
+                                        </TableRow>
+                                      )}
+                                      {isExpanded && !hasSplitsN && event.eventType === "relay" && splits.length > 0 && splits.map((split, i) => (
                                         <TableRow key={`nonscorer-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-slate-50/80" : "bg-white/80"}>
-                                          <TableCell className="w-[4.5rem]" />
+                                          <TableCell className="w-[4rem] pr-2" />
                                           <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
                                           <TableCell />
-                                          <TableCell className="w-[5.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
-                                          <TableCell className="w-[3.5rem]" />
+                                          <TableCell />
+                                          <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                          <TableCell className="w-[6rem] pl-5" />
                                         </TableRow>
                                       ))}
-                                    </>
+                                    </Fragment>
                                   );
                                 })}
                               </>
@@ -970,7 +1299,7 @@ export function EventDetailView({
                 </div>
               )}
               {/* Override note and re-run button */}
-              {!isEditMode && (
+              {!readOnly && !isEditMode && (
                 <div className="mt-4 pt-4 border-t flex items-center justify-between">
                   {hasOverrides && (
                     <p className="text-sm text-slate-500">
@@ -1081,7 +1410,7 @@ export function EventDetailView({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {displayStats.length === 0 ? (
+                    {displayStats.length === 0 || displayStats.every((s) => s.entries.length === 0) ? (
                       <TableRow>
                         <TableCell colSpan={8} className="text-center py-8 text-slate-500">
                           No entries in this event.

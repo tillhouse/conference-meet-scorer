@@ -1,6 +1,4 @@
 import { notFound } from "next/navigation";
-import { appendFileSync } from "fs";
-import { join } from "path";
 import { prisma } from "@/lib/prisma";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -76,11 +74,6 @@ export default async function MeetLineupsPage({
       const filtered = meetTeam.team.athletes.filter((athlete) =>
         selectedAthleteIds.includes(athlete.id)
       );
-      // #region agent log
-      const h4Payload = { location: "lineups/page", message: "Lineups page: roster filter", data: { meetId: id, teamId: meetTeam.teamId, selectedCount: selectedAthleteIds.length, filteredCount: filtered.length, selectedAthleteIds }, timestamp: Date.now(), hypothesisId: "H4" };
-      fetch('http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(h4Payload)}).catch(()=>{});
-      try { appendFileSync(join(process.cwd(), ".cursor", "debug.log"), JSON.stringify(h4Payload) + "\n"); } catch (_) {}
-      // #endregion
       return {
         ...meetTeam,
         team: {

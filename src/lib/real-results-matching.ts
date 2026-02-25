@@ -9,6 +9,7 @@ export type AthleteForMatch = {
   id: string;
   firstName: string;
   lastName: string;
+  year?: string | null; // "FR", "SO", "JR", "SR", "GR" - used to disambiguate same-name athletes
 };
 
 export type MeetTeamForMatch = {
@@ -125,10 +126,26 @@ const NICKNAME_MAP: Record<string, string[]> = {
   kate: ["katherine", "katelyn"],
   katherine: ["kate"],
   katelyn: ["kate"],
+  mingna: ["minga"],
+  minga: ["mingna"],
 };
 
 function normalizeForCompare(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+/** Normalize class year for comparison: "FR", "SO", "JR", "SR", "GR" (case-insensitive). */
+function normalizeYear(year: string | null | undefined): string | null {
+  if (year == null || year === "") return null;
+  const y = year.trim().toUpperCase();
+  return ["FR", "SO", "JR", "SR", "GR"].includes(y) ? y : null;
+}
+
+/** Return true if parsed year matches athlete year (both normalized); false if either missing. */
+function yearMatches(parsedYear: string | null | undefined, athleteYear: string | null | undefined): boolean {
+  const p = normalizeYear(parsedYear);
+  const a = normalizeYear(athleteYear);
+  if (p == null || a == null) return true; // no disambiguation possible
+  return p === a;
 }
 
 /** Expand first name to possible variants (formal + nicknames). */
@@ -151,11 +168,14 @@ export type MatchResult =
 
 /**
  * Match a parsed name (e.g. "Schott, Mitchell" or "Mitchell Schott") to one athlete or return candidates/none.
- * Uses: format normalization, case-insensitive, nickname expansion, then optional first-initial + lastName.
+ * Uses: format normalization, case-insensitive, nickname expansion, optional first-initial + lastName.
+ * When parsedYear is provided, class year is used to disambiguate multiple same-name athletes (e.g. two "Brian Lee")
+ * or to require year match for a single initial-only match.
  */
 export function matchAthleteByName(
   parsedName: string,
-  athletes: AthleteForMatch[]
+  athletes: AthleteForMatch[],
+  parsedYear?: string | null
 ): MatchResult {
   if (athletes.length === 0) return { kind: "none" };
   const { firstName: pFirst, lastName: pLast } = normalizeParsedName(parsedName);
@@ -178,15 +198,50 @@ export function matchAthleteByName(
       exactMatches.push(a);
       continue;
     }
-    if (aFirst.charAt(0) === pFirstVariants[0]?.charAt(0)) {
+    // First-initial match: allow only when parsed first name is not a prefix of athlete's (and vice versa),
+    // so "Min" never matches "Minga" and we don't overwrite 24th with 38th.
+    const pFirstBase = pFirstVariants[0] ?? "";
+    const oneIsPrefixOfOther =
+      pFirstBase.length > 0 && aFirst.length > 0 &&
+      (aFirst.startsWith(pFirstBase) || pFirstBase.startsWith(aFirst)) &&
+      aFirst !== pFirstBase;
+    if (!oneIsPrefixOfOther && aFirst.charAt(0) === pFirstBase.charAt(0)) {
       initialMatches.push(a);
     }
   }
 
-  if (exactMatches.length === 1) return { kind: "match", athlete: exactMatches[0] };
-  if (exactMatches.length > 1) return { kind: "candidates", athletes: exactMatches };
-  if (initialMatches.length === 1) return { kind: "match", athlete: initialMatches[0] };
-  if (initialMatches.length > 1) return { kind: "candidates", athletes: initialMatches };
+  // Apply class-year disambiguation when we have multiple candidates or a single initial-only match
+  const filterByYear = (list: AthleteForMatch[]): AthleteForMatch[] => {
+    if (normalizeYear(parsedYear) == null) return list;
+    const withYear = list.filter((a) => yearMatches(parsedYear, a.year));
+    return withYear.length > 0 ? withYear : list; // if no one has matching year, keep original list
+  };
+
+  const requireYearForSingle = (athlete: AthleteForMatch): boolean => {
+    if (normalizeYear(parsedYear) == null) return true;
+    return yearMatches(parsedYear, athlete.year);
+  };
+
+  if (exactMatches.length === 1) {
+    const only = exactMatches[0]!;
+    if (!requireYearForSingle(only)) return { kind: "none" };
+    return { kind: "match", athlete: only };
+  }
+  if (exactMatches.length > 1) {
+    const byYear = filterByYear(exactMatches);
+    if (byYear.length === 1) return { kind: "match", athlete: byYear[0]! };
+    return { kind: "candidates", athletes: exactMatches };
+  }
+  if (initialMatches.length === 1) {
+    const only = initialMatches[0]!;
+    if (!requireYearForSingle(only)) return { kind: "none" };
+    return { kind: "match", athlete: only };
+  }
+  if (initialMatches.length > 1) {
+    const byYear = filterByYear(initialMatches);
+    if (byYear.length === 1) return { kind: "match", athlete: byYear[0]! };
+    return { kind: "candidates", athletes: initialMatches };
+  }
   return { kind: "none" };
 }
 

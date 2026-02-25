@@ -1,11 +1,18 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getMeetOwnerId } from "@/lib/meet-auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Trophy, Calendar, MapPin } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { DuplicateMeetButton } from "@/components/meets/duplicate-meet-button";
+import { DeleteMeetButton } from "@/components/meets/delete-meet-button";
 
 export default async function MeetsPage() {
+  const session = await getServerSession(authOptions);
+
   const meets = await prisma.meet.findMany({
     include: {
       meetTeams: {
@@ -13,6 +20,8 @@ export default async function MeetsPage() {
           team: true,
         },
       },
+      team: { select: { ownerId: true } },
+      teamAccount: { select: { ownerId: true } },
       _count: {
         select: {
           meetTeams: true,
@@ -65,40 +74,47 @@ export default async function MeetsPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {meets.map((meet) => (
             <Card key={meet.id} className="hover:shadow-lg transition-shadow">
-              <Link href={`/meets/${meet.id}`}>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-xl">{meet.name}</CardTitle>
-                    <Badge variant={meet.status === "completed" ? "default" : "secondary"}>
-                      {meet.status}
-                    </Badge>
-                  </div>
-                  <CardDescription>
-                    {meet.meetType === "championship" ? "Championship" : "Dual"} Meet
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm">
-                    {meet.date && (
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <Calendar className="h-4 w-4" />
-                        <span>{new Date(meet.date).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                    {meet.location && (
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <MapPin className="h-4 w-4" />
-                        <span>{meet.location}</span>
-                      </div>
-                    )}
-                    <div className="pt-2 border-t">
-                      <span className="text-slate-600">
-                        {meet._count.meetTeams} team{meet._count.meetTeams !== 1 ? "s" : ""}
-                      </span>
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-xl">{meet.name}</CardTitle>
+                  <Badge variant={meet.status === "completed" ? "default" : "secondary"}>
+                    {meet.status}
+                  </Badge>
+                </div>
+                <CardDescription>
+                  {meet.meetType === "championship" ? "Championship" : "Dual"} Meet
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 text-sm">
+                  {meet.date && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <Calendar className="h-4 w-4" />
+                      <span>{new Date(meet.date).toLocaleDateString()}</span>
                     </div>
+                  )}
+                  {meet.location && (
+                    <div className="flex items-center gap-2 text-slate-600">
+                      <MapPin className="h-4 w-4" />
+                      <span>{meet.location}</span>
+                    </div>
+                  )}
+                  <div className="pt-2 border-t">
+                    <span className="text-slate-600">
+                      {meet._count.meetTeams} team{meet._count.meetTeams !== 1 ? "s" : ""}
+                    </span>
                   </div>
-                </CardContent>
-              </Link>
+                </div>
+                <div className="mt-4 flex items-center gap-2 flex-wrap">
+                  <Button asChild size="sm">
+                    <Link href={`/meets/${meet.id}`}>Open</Link>
+                  </Button>
+                  <DuplicateMeetButton meetId={meet.id} />
+                  {session?.user?.id === getMeetOwnerId(meet) && (
+                    <DeleteMeetButton meetId={meet.id} meetName={meet.name} />
+                  )}
+                </div>
+              </CardContent>
             </Card>
           ))}
         </div>

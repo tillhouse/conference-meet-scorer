@@ -1,16 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
-import fs from "fs";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-
-const DEBUG_LOG = (payload: Record<string, unknown>) => {
-  fetch("http://127.0.0.1:7242/ingest/426f4955-f215-4c12-ba39-c5cdc5ffe243", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...payload, timestamp: Date.now() }),
-  }).catch(() => {});
-};
 
 const SENSITIVITY_MAX_ATHLETES = 3;
 
@@ -83,18 +73,10 @@ export async function POST(
   try {
     const { meetId, teamId } = await params;
     const body = await request.json();
-    // #region agent log
-    DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-body", message: "Roster POST body before parse", data: { bodyKeys: Object.keys(body), sensitivityAthleteIds: body.sensitivityAthleteIds, sensitivityPercent: body.sensitivityPercent }, timestamp: Date.now(), hypothesisId: "H1" });
-    // #endregion
     let data: z.infer<typeof saveRosterSchema>;
     try {
       data = saveRosterSchema.parse(body);
     } catch (parseError) {
-      // #region agent log
-      if (parseError instanceof z.ZodError) {
-        DEBUG_LOG({ location: "rosters/[teamId]/route.ts:POST-zod", message: "Zod parse failed", data: { issues: parseError.issues, firstMessage: parseError.issues[0]?.message }, timestamp: Date.now(), hypothesisId: "H1" });
-      }
-      // #endregion
       throw parseError;
     }
 
@@ -213,16 +195,6 @@ export async function POST(
       sensitivityResults: null, // clear until next simulate
     };
 
-    // #region agent log
-    DEBUG_LOG({
-      location: "rosters/[teamId]/route.ts:before-update",
-      message: "MeetTeam update payload",
-      hypothesisId: "H1",
-      runId: "roster-save",
-      data: { updatePayloadKeys: Object.keys(updateData) },
-    });
-    // #endregion
-
     try {
       await prisma.meetTeam.update({
         where: {
@@ -251,15 +223,6 @@ export async function POST(
     } catch (updateError: unknown) {
       console.error("Error updating MeetTeam:", updateError);
       const errMsg = updateError instanceof Error ? updateError.message : String(updateError);
-      // #region agent log
-      DEBUG_LOG({
-        location: "rosters/[teamId]/route.ts:update-catch",
-        message: "MeetTeam.update failed",
-        hypothesisId: "H1",
-        runId: "roster-save",
-        data: { errorMessage: errMsg },
-      });
-      // #endregion
       if (errMsg.includes("Unknown argument") || errMsg.includes("selectedAthletes")) {
         return NextResponse.json(
           {

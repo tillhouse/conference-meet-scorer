@@ -101,6 +101,19 @@ function abbreviateEventName(name: string): string {
 interface MeetAthleteSummaryTableProps {
   meetLineups: MeetLineup[];
   relayEntries: RelayEntry[];
+  /** Athletes who appear only in relays (no meetLineup); used to show relay-only rows */
+  relayOnlyAthletes?: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    year: string | null;
+    team: {
+      id: string;
+      name: string;
+      schoolName?: string | null;
+      primaryColor: string | null;
+    };
+  }>;
   events: MeetEvent[];
   individualScoring: Record<string, number>;
   relayScoring: Record<string, number>;
@@ -147,6 +160,7 @@ interface AthleteSummary {
 export function MeetAthleteSummaryTable({
   meetLineups,
   relayEntries,
+  relayOnlyAthletes = [],
   events = [],
   individualScoring,
   relayScoring,
@@ -318,6 +332,26 @@ export function MeetAthleteSummaryTable({
       summary.totalPoints += points;
     });
 
+    // Phase 2: add stub rows for athletes who appear only in relays
+    relayOnlyAthletes.forEach((athlete) => {
+      if (summariesMap.has(athlete.id)) return;
+      summariesMap.set(athlete.id, {
+        athleteId: athlete.id,
+        firstName: athlete.firstName,
+        lastName: athlete.lastName,
+        year: athlete.year,
+        teamId: athlete.team.id,
+        teamName: formatTeamName(athlete.team.name, athlete.team.schoolName),
+        teamColor: athlete.team.primaryColor,
+        individualEvents: [],
+        relayEvents: [],
+        totalPoints: 0,
+        individualEventCount: 0,
+        relayEventCount: 0,
+        divingEventCount: 0,
+      });
+    });
+
     // Process relay events
     relayEntries.forEach((relay) => {
       if (!relay.members) return;
@@ -377,7 +411,7 @@ export function MeetAthleteSummaryTable({
     });
 
     return Array.from(summariesMap.values());
-  }, [meetLineups, relayEntries, individualScoring, relayScoring, scoringPlaces, meetTeamsByTeamId]);
+  }, [meetLineups, relayEntries, relayOnlyAthletes, individualScoring, relayScoring, scoringPlaces, meetTeamsByTeamId]);
 
   // Event grid: only individual and diving events (no relays)
   const gridEvents = useMemo(
@@ -707,7 +741,15 @@ export function MeetAthleteSummaryTable({
                   {getSortIcon("individualEvents")}
                 </button>
               </TableHead>
-              <TableHead>Relay Events</TableHead>
+              <TableHead>
+                <button
+                  onClick={() => handleSort("relayEvents")}
+                  className="group flex items-center hover:text-slate-900 transition-colors"
+                >
+                  Relay Events
+                  {getSortIcon("relayEvents")}
+                </button>
+              </TableHead>
               <TableHead>Diving Events</TableHead>
               <TableHead>
                 <button

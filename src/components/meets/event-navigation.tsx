@@ -22,6 +22,10 @@ interface EventNavigationProps {
   events: Event[];
   currentEventId: string;
   meetId: string;
+  /** If set, links use this path instead of /meets/[meetId]/events (e.g. /view/meet/[shareToken]/events) */
+  eventsBasePath?: string;
+  /** Optional query string to append to event links (e.g. "view=simulated") */
+  pathQuery?: string;
   prevEvent: Event | null;
   nextEvent: Event | null;
 }
@@ -30,13 +34,17 @@ export function EventNavigation({
   events,
   currentEventId,
   meetId,
+  eventsBasePath,
+  pathQuery,
   prevEvent,
   nextEvent,
 }: EventNavigationProps) {
   const router = useRouter();
+  const basePath = eventsBasePath ?? `/meets/${meetId}/events`;
+  const q = pathQuery ? `?${pathQuery}` : "";
 
   const handleEventChange = (eventId: string) => {
-    router.push(`/meets/${meetId}/events/${eventId}`);
+    router.push(`${basePath}/${eventId}${q}`);
   };
 
   return (
@@ -50,7 +58,7 @@ export function EventNavigation({
             disabled={!prevEvent}
           >
             {prevEvent ? (
-              <Link href={`/meets/${meetId}/events/${prevEvent.id}`}>
+              <Link href={`${basePath}/${prevEvent.id}${q}`}>
                 <ChevronLeft className="h-4 w-4 mr-2" />
                 Previous: {prevEvent.name}
               </Link>
@@ -84,7 +92,7 @@ export function EventNavigation({
             disabled={!nextEvent}
           >
             {nextEvent ? (
-              <Link href={`/meets/${meetId}/events/${nextEvent.id}`}>
+              <Link href={`${basePath}/${nextEvent.id}${q}`}>
                 Next: {nextEvent.name}
                 <ChevronRight className="h-4 w-4 ml-2" />
               </Link>

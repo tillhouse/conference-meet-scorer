@@ -180,24 +180,86 @@ export async function POST(
 
     if (event.eventType === "relay") {
       const res = parsed as ParseResult<RelayRow>;
-      for (const row of res.rows) {
+      const relayRows = res.rows;
+      const scoringPlacesLimitRelay = meet.scoringPlaces ?? 24;
+      const normalizedRelays: { row: RelayRow; place: number | null; points: number }[] = [];
+      let nextPlaceRelay = 1;
+      let ri = 0;
+      while (ri < relayRows.length) {
+        const current = relayRows[ri]!;
+        if (current.place == null || current.disqualified) {
+          normalizedRelays.push({ row: current, place: null, points: 0 });
+          ri++;
+          continue;
+        }
+        const group: RelayRow[] = [current];
+        ri++;
+        while (ri < relayRows.length && relayRows[ri]!.place !== null && relayRows[ri]!.place === group[0]!.place) {
+          group.push(relayRows[ri]!);
+          ri++;
+        }
+        const placeStart = nextPlaceRelay;
+        const placeEnd = nextPlaceRelay + group.length - 1;
+        const pointSum = Array.from({ length: group.length }, (_, k) =>
+          placeStart + k <= scoringPlacesLimitRelay ? (relayScoring[(placeStart + k).toString()] ?? 0) : 0
+        ).reduce((a, b) => a + b, 0);
+        const avgPoints = group.length > 0 ? pointSum / group.length : 0;
+        group.forEach((row) => {
+          normalizedRelays.push({ row, place: placeStart, points: avgPoints });
+        });
+        nextPlaceRelay = placeEnd + 1;
+      }
+
+      for (const { row, place: assignedPlace, points: assignedPoints } of normalizedRelays) {
         const teamId = resolveSchoolToTeamId(row.school, schoolToTeamId);
         if (!teamId) {
           unresolved.push({
-            place: row.place,
+            place: row.place ?? 0,
             school: row.school,
             timeStr: row.timeStr,
             reason: "no_team",
           });
           continue;
         }
-        const points =
-          row.points != null ? row.points : pointsForPlace(row.place);
-        const timeSeconds = parseTimeToSeconds(row.timeStr);
+        const timeSeconds = row.timeStr === "DQ" || row.timeStr === "XDQ" ? null : parseTimeToSeconds(row.timeStr);
+
+        const splitsData =
+          row.legs != null || row.relayCumulativeAt50 != null
+            ? JSON.stringify({
+                legs: row.legs ?? undefined,
+                relayCumulativeAt50: row.relayCumulativeAt50 ?? undefined,
+              })
+            : null;
+
+        // If parsed relay has leg names, match to team athletes and set members
+        let membersJson: string | undefined;
+        if (row.legs != null && row.legs.length > 0) {
+          const teamAthletes = await prisma.athlete.findMany({
+            where: { teamId },
+            select: { id: true, firstName: true, lastName: true, year: true },
+          });
+          const athletesForMatch: AthleteForMatch[] = teamAthletes.map((a) => ({
+            id: a.id,
+            firstName: a.firstName,
+            lastName: a.lastName,
+            year: a.year ?? null,
+          }));
+          const memberIds: (string | null)[] = [];
+          for (let i = 0; i < 4; i++) {
+            const leg = row.legs[i];
+            if (!leg?.name?.trim()) {
+              memberIds.push(null);
+              continue;
+            }
+            const match = matchAthleteByName(leg.name, athletesForMatch, null);
+            memberIds.push(match.kind === "match" ? match.athlete.id : null);
+          }
+          membersJson = JSON.stringify(memberIds);
+        }
 
         let relay = await prisma.relayEntry.findUnique({
           where: {
-            meetId_eventId_teamId: { meetId, eventId, teamId },
+            meetId_teamId_eventId: { meetId, teamId, eventId },
           },
         });
         if (!relay) {
@@ -208,8 +270,10 @@ export async function POST(
               teamId,
               finalTime: row.timeStr,
               finalTimeSeconds: timeSeconds,
-              place: row.place,
-              points,
+              place: assignedPlace,
+              points: assignedPoints,
+              splitsData,
+              ...(membersJson != null && { members: membersJson }),
             },
           });
         } else {
@@ -218,8 +282,10 @@ export async function POST(
             data: {
               finalTime: row.timeStr,
               finalTimeSeconds: timeSeconds,
-              place: row.place,
-              points,
+              place: assignedPlace,
+              points: assignedPoints,
+              splitsData,
+              ...(membersJson != null && { members: membersJson }),
             },
           });
         }
@@ -230,7 +296,31 @@ export async function POST(
       const rows = res.rows as (IndividualRow | DivingRow)[];
       const isDiving = event.eventType === "diving";
 
-      for (const row of rows) {
+      // Normalize places and points for ties: consecutive same place => same stored place, split points; next place skips
+      const scoringPlacesLimit = meet.scoringPlaces ?? 24;
+      const normalizedRows: { row: (IndividualRow | DivingRow); place: number; points: number }[] = [];
+      let nextPlace = 1;
+      let idx = 0;
+      while (idx < rows.length) {
+        const group: (IndividualRow | DivingRow)[] = [rows[idx]!];
+        idx++;
+        while (idx < rows.length && rows[idx]!.place === group[0]!.place) {
+          group.push(rows[idx]!);
+          idx++;
+        }
+        const placeStart = nextPlace;
+        const placeEnd = nextPlace + group.length - 1;
+        const pointSum = Array.from({ length: group.length }, (_, k) =>
+          placeStart + k <= scoringPlacesLimit ? (scoringTable[(placeStart + k).toString()] ?? 0) : 0
+        ).reduce((a, b) => a + b, 0);
+        const avgPoints = group.length > 0 ? pointSum / group.length : 0;
+        group.forEach((row) => {
+          normalizedRows.push({ row, place: placeStart, points: avgPoints });
+        });
+        nextPlace = placeEnd + 1;
+      }
+
+      for (const { row, place: assignedPlace, points: assignedPoints } of normalizedRows) {
         const schoolLabel = isDiving
           ? (row as DivingRow).schoolCode
           : (row as IndividualRow).school;
@@ -253,21 +343,29 @@ export async function POST(
 
         const teamAthletes = await prisma.athlete.findMany({
           where: { teamId },
-          select: { id: true, firstName: true, lastName: true },
+          select: { id: true, firstName: true, lastName: true, year: true },
         });
         const athletesForMatch: AthleteForMatch[] = teamAthletes.map((a) => ({
           id: a.id,
           firstName: a.firstName,
           lastName: a.lastName,
+          year: a.year ?? null,
         }));
 
         const nameStr = row.name || "";
-        const matchResult = matchAthleteByName(nameStr, athletesForMatch);
+        const parsedYear = (row as IndividualRow).year ?? (row as DivingRow).year ?? null;
+        const matchResult = matchAthleteByName(nameStr, athletesForMatch, parsedYear);
 
         let athleteId: string | null = null;
 
         if (matchResult.kind === "match") {
           athleteId = matchResult.athlete.id;
+          if (parsedYear && !matchResult.athlete.year?.trim()) {
+            await prisma.athlete.update({
+              where: { id: matchResult.athlete.id },
+              data: { year: parsedYear },
+            });
+          }
         } else if (matchResult.kind === "candidates") {
           unresolved.push({
             place: row.place,
@@ -288,6 +386,7 @@ export async function POST(
               firstName: firstName || "Unknown",
               lastName: lastName || "Unknown",
               isDiver: isDiving,
+              year: parsedYear ?? undefined,
             },
           });
           athleteId = newAthlete.id;
@@ -325,7 +424,18 @@ export async function POST(
           ? (row as DivingRow).score
           : (row as IndividualRow).timeStr;
         const timeSeconds = parseTimeToSeconds(timeStr);
-        const points = pointsForPlace(row.place);
+
+        const indRow = row as IndividualRow;
+        const lineupSplitsData =
+          indRow.reactionTimeSeconds != null ||
+          (indRow.cumulativeSplits != null && indRow.cumulativeSplits.length > 0) ||
+          (indRow.subSplits != null && indRow.subSplits.length > 0)
+            ? JSON.stringify({
+                reactionTimeSeconds: indRow.reactionTimeSeconds ?? null,
+                cumulativeSplits: indRow.cumulativeSplits ?? [],
+                subSplits: indRow.subSplits ?? [],
+              })
+            : null;
 
         let lineup = await prisma.meetLineup.findUnique({
           where: {
@@ -340,8 +450,9 @@ export async function POST(
               eventId,
               finalTime: timeStr,
               finalTimeSeconds: timeSeconds,
-              place: row.place,
-              points,
+              place: assignedPlace,
+              points: assignedPoints,
+              splitsData: lineupSplitsData,
             },
           });
         } else {
@@ -350,8 +461,9 @@ export async function POST(
             data: {
               finalTime: timeStr,
               finalTimeSeconds: timeSeconds,
-              place: row.place,
-              points,
+              place: assignedPlace,
+              points: assignedPoints,
+              splitsData: lineupSplitsData,
             },
           });
         }
@@ -392,6 +504,59 @@ export async function POST(
     console.error("Apply results error:", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to apply results" },
+      { status: 500 }
+    );
+  }
+}
+
+/** Clear all results (place, time, points, splits) for this event. */
+export async function DELETE(
+  _request: NextRequest,
+  context: { params: Promise<{ meetId: string; eventId: string }> }
+) {
+  try {
+    const { meetId, eventId } = await context.params;
+
+    const lineupResult = await prisma.meetLineup.updateMany({
+      where: { meetId, eventId },
+      data: {
+        finalTime: null,
+        finalTimeSeconds: null,
+        place: null,
+        points: null,
+        splitsData: null,
+      },
+    });
+
+    await prisma.relayEntry.updateMany({
+      where: { meetId, eventId },
+      data: {
+        finalTime: null,
+        finalTimeSeconds: null,
+        place: null,
+        points: null,
+        splitsData: null,
+      },
+    });
+
+    const meet = await prisma.meet.findUnique({
+      where: { id: meetId },
+      select: { realResultsEventIds: true },
+    });
+    if (meet?.realResultsEventIds) {
+      const ids = JSON.parse(meet.realResultsEventIds) as string[];
+      const next = ids.filter((id) => id !== eventId);
+      await prisma.meet.update({
+        where: { id: meetId },
+        data: { realResultsEventIds: JSON.stringify(next) },
+      });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("Clear results error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to clear results" },
       { status: 500 }
     );
   }
