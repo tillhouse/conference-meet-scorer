@@ -33,8 +33,8 @@ export default async function ViewMeetLayout({
             </Badge>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
-            <PublicViewModeSelector />
             <PublicMeetNavigation shareToken={shareToken} />
+            <PublicViewModeSelector />
           </div>
         </div>
       </header>

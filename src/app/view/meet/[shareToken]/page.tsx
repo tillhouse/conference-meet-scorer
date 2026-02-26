@@ -9,10 +9,12 @@ import { TeamStandings } from "@/components/meets/team-standings";
 import { sortEventsByOrder } from "@/lib/event-utils";
 import {
   getComputedMeetView,
-  hasRealResults,
   hasSimulatedData,
   type ViewMode,
 } from "@/lib/meet-simulate-compute";
+import { PerformanceVsProjection } from "@/components/meets/performance-vs-projection";
+
+export const dynamic = "force-dynamic";
 
 function parseViewParam(param: string | null): ViewMode {
   if (param === "simulated" || param === "real" || param === "hybrid") return param;
@@ -83,6 +85,23 @@ export default async function ViewMeetOverviewPage({
     notFound();
   }
 
+  type LineupWithSim = (typeof meet.meetLineups)[number] & {
+    simulatedPoints?: number | null;
+    realResultApplied?: boolean;
+  };
+  type RelayWithSim = (typeof meet.relayEntries)[number] & {
+    simulatedPoints?: number | null;
+    realResultApplied?: boolean;
+  };
+
+  const eventsWithActualResults = new Set<string>();
+  (meet.meetLineups as LineupWithSim[]).forEach((l) => {
+    if (l.realResultApplied) eventsWithActualResults.add(l.eventId);
+  });
+  (meet.relayEntries as RelayWithSim[]).forEach((r) => {
+    if (r.realResultApplied) eventsWithActualResults.add(r.eventId);
+  });
+
   const realResultsEventIds = meet.realResultsEventIds
     ? (JSON.parse(meet.realResultsEventIds) as string[])
     : [];
@@ -106,10 +125,65 @@ export default async function ViewMeetOverviewPage({
     realResultsEventIds
   );
 
+  const { meetTeams: fullSimulatedMeetTeams } = getComputedMeetView(
+    meetForCompute,
+    "simulated",
+    []
+  );
+
+  const projectedTotalsSubset = new Map<
+    string,
+    { individual: number; relay: number; diving: number; total: number }
+  >();
+  meet.meetTeams.forEach((mt) =>
+    projectedTotalsSubset.set(mt.teamId, { individual: 0, relay: 0, diving: 0, total: 0 })
+  );
+  (meet.meetLineups as LineupWithSim[]).forEach((l) => {
+    if (!eventsWithActualResults.has(l.eventId)) return;
+    const teamId = l.athlete.team.id;
+    const pts = l.simulatedPoints ?? 0;
+    const rec = projectedTotalsSubset.get(teamId);
+    if (!rec) return;
+    if (l.event.eventType === "diving") rec.diving += pts;
+    else if (l.event.eventType === "individual") rec.individual += pts;
+    rec.total = rec.individual + rec.relay + rec.diving;
+  });
+  (meet.relayEntries as RelayWithSim[]).forEach((r) => {
+    if (!eventsWithActualResults.has(r.eventId)) return;
+    const rec = projectedTotalsSubset.get(r.teamId);
+    if (!rec) return;
+    rec.relay += r.simulatedPoints ?? 0;
+    rec.total = rec.individual + rec.relay + rec.diving;
+  });
+  const projectedMeetTeamsSubset = meet.meetTeams.map((mt) => {
+    const p = projectedTotalsSubset.get(mt.teamId) ?? {
+      individual: 0,
+      relay: 0,
+      diving: 0,
+      total: 0,
+    };
+    return {
+      ...mt,
+      individualScore: p.individual,
+      relayScore: p.relay,
+      divingScore: p.diving,
+      totalScore: p.total,
+    };
+  });
+
+  const projectedMeetTeamsForDelta =
+    view === "hybrid"
+      ? fullSimulatedMeetTeams
+      : view === "real"
+        ? projectedMeetTeamsSubset
+        : undefined;
+
   const hasDataForView =
     view === "real"
-      ? hasRealResults(meet, realResultsEventIds)
-      : hasSimulatedData(meet);
+      ? eventsWithActualResults.size > 0
+      : view === "simulated"
+        ? hasSimulatedData(meet)
+        : hasSimulatedData(meet) || eventsWithActualResults.size > 0;
 
   const selectedEvents = meet.selectedEvents ? (JSON.parse(meet.selectedEvents) as string[]) : [];
   const eventsUnsorted = await prisma.event.findMany({
@@ -197,7 +271,17 @@ export default async function ViewMeetOverviewPage({
         relayEntries={relayEntries}
         durationDays={durationDays}
         eventDays={eventDays}
+        projectedMeetTeams={projectedMeetTeamsForDelta}
+        scoringMode={view}
       />
+
+      {view !== "simulated" && eventsWithActualResults.size > 0 && (
+        <PerformanceVsProjection
+          meetLineups={meet.meetLineups}
+          relayEntries={meet.relayEntries}
+          teams={meetTeams.map((mt) => mt.team)}
+        />
+      )}
 
       {hasResults && (
         <ScoreProgressionGraph

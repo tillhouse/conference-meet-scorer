@@ -10,6 +10,8 @@ import {
   type ViewMode,
 } from "@/lib/meet-simulate-compute";
 
+export const dynamic = "force-dynamic";
+
 function parseViewParam(param: string | null): ViewMode {
   if (param === "simulated" || param === "real" || param === "hybrid") return param;
   return "simulated";

@@ -544,7 +544,7 @@ export function RelayCreator({
                     const name = event.name || event.id;
                     return (
                       <SelectItem key={event.id} value={name}>
-                        {event.name}
+                {event.name}
                       </SelectItem>
                     );
                   })}
@@ -555,15 +555,15 @@ export function RelayCreator({
             {(() => {
               const event = relayEvents.find((e) => (e.name || e.id) === selectedEventName) || relayEvents[0];
               if (!event) return null;
-              const eventName = event.name || event.id;
-              const entry = relayEntries[eventName] || {
-                eventId: eventName,
-                athletes: [null, null, null, null],
-                times: [null, null, null, null],
-                useRelaySplits: [false, true, true, true],
-              };
+            const eventName = event.name || event.id;
+            const entry = relayEntries[eventName] || {
+              eventId: eventName,
+              athletes: [null, null, null, null],
+              times: [null, null, null, null],
+              useRelaySplits: [false, true, true, true],
+            };
 
-              return (
+            return (
                 <>
                   <div className="rounded-md border">
                     <Table className="w-full">
@@ -579,51 +579,51 @@ export function RelayCreator({
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {event.legs.map((stroke, legIndex) => {
-                          const athleteId = entry.athletes[legIndex];
-                          const customTime = entry.times[legIndex];
-                          const useRelaySplit = entry.useRelaySplits[legIndex];
-                          const distance = event.distances[legIndex];
-                          const calculatedTime = calculateLegTime(
-                            athleteId,
-                            legIndex,
-                            stroke,
-                            eventName,
-                            useRelaySplit,
-                            customTime,
-                            distance
-                          );
+                  {event.legs.map((stroke, legIndex) => {
+                    const athleteId = entry.athletes[legIndex];
+                    const customTime = entry.times[legIndex];
+                    const useRelaySplit = entry.useRelaySplits[legIndex];
+                    const distance = event.distances[legIndex];
+                    const calculatedTime = calculateLegTime(
+                      athleteId,
+                      legIndex,
+                      stroke,
+                      eventName,
+                      useRelaySplit,
+                      customTime,
+                      distance
+                    );
                           const strokeLabel = `${distance} ${stroke}`;
 
-                          return (
+                    return (
                             <TableRow key={legIndex} className="align-middle">
                               <TableCell className="w-12 px-3 py-2 font-medium text-slate-600">
                                 {legIndex + 1}
                               </TableCell>
                               <TableCell className="min-w-[11rem] px-4 py-2 pr-8">
-                                <Select
-                                  value={athleteId || "none"}
-                                  onValueChange={(value) => {
-                                    const newEntries = { ...relayEntries };
+                          <Select
+                            value={athleteId || "none"}
+                            onValueChange={(value) => {
+                              const newEntries = { ...relayEntries };
                                     if (!newEntries[eventName]) newEntries[eventName] = { ...entry };
-                                    newEntries[eventName].athletes[legIndex] = value === "none" ? null : value;
+                              newEntries[eventName].athletes[legIndex] = value === "none" ? null : value;
                                     // Clear custom time for this leg so the displayed time updates to the new swimmer's calculated time
                                     newEntries[eventName].times[legIndex] = null;
-                                    setRelayEntries(newEntries);
-                                  }}
-                                >
+                              setRelayEntries(newEntries);
+                            }}
+                          >
                                   <SelectTrigger className="h-8 text-sm">
                                     <SelectValue placeholder="Select" />
-                                  </SelectTrigger>
-                                  <SelectContent>
+                            </SelectTrigger>
+                            <SelectContent>
                                     <SelectItem value="none">—</SelectItem>
                                     {team.athletes.map((a) => (
                                       <SelectItem key={a.id} value={a.id}>
                                         {formatName(a.firstName, a.lastName)}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                               </TableCell>
                               <TableCell className="w-[6.25rem] px-4 py-2 text-right text-slate-600 text-sm">
                                 {strokeLabel}
@@ -691,10 +691,10 @@ export function RelayCreator({
                               {event.legs.some((_, i) => i > 0) && (
                                 <TableCell className="w-[7.25rem] pl-4 pr-4 py-2 text-right">
                                   {legIndex > 0 && athleteId ? (
-                                    <Select
+                              <Select
                                       value={customTime != null && customTime !== "" ? "custom" : (useRelaySplit ? "split" : "flat")}
-                                      onValueChange={(value) => {
-                                        const newEntries = { ...relayEntries };
+                                onValueChange={(value) => {
+                                  const newEntries = { ...relayEntries };
                                         if (!newEntries[eventName]) newEntries[eventName] = { ...entry };
                                         if (value === "custom") {
                                           const calc = calculateLegTime(
@@ -711,18 +711,18 @@ export function RelayCreator({
                                           newEntries[eventName].times[legIndex] = null;
                                           newEntries[eventName].useRelaySplits[legIndex] = value === "split";
                                         }
-                                        setRelayEntries(newEntries);
-                                      }}
-                                    >
+                                  setRelayEntries(newEntries);
+                                }}
+                              >
                                       <SelectTrigger className="h-8 min-w-[7rem] text-sm">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
                                         <SelectItem value="split">Split</SelectItem>
                                         <SelectItem value="flat">Flat −{correctionFactor}s</SelectItem>
                                         <SelectItem value="custom">Custom</SelectItem>
-                                      </SelectContent>
-                                    </Select>
+                                </SelectContent>
+                              </Select>
                                   ) : legIndex === 0 ? (
                                     <span className="text-xs text-slate-500">Flat start</span>
                                   ) : (
@@ -731,9 +731,9 @@ export function RelayCreator({
                                 </TableCell>
                               )}
                             </TableRow>
-                          );
-                        })}
-                        {entry.athletes.every((a) => a !== null) && (
+                    );
+                  })}
+                {entry.athletes.every((a) => a !== null) && (
                           <TableRow className="bg-slate-50 border-t-2 border-slate-200">
                             <TableCell className="w-12 px-3 py-2 font-medium text-slate-700">
                               Total
@@ -743,23 +743,23 @@ export function RelayCreator({
                             <TableCell className="w-[8.5rem] px-4 py-2 text-center">
                               <div className="grid grid-cols-[1fr_auto] gap-1 items-center w-full">
                                 <span className="font-mono font-bold justify-self-center">
-                                  {(() => {
-                                    const times = event.legs.map((stroke, idx) => {
-                                      const time = entry.times[idx] || calculateLegTime(
-                                        entry.athletes[idx],
-                                        idx,
-                                        stroke,
-                                        eventName,
-                                        entry.useRelaySplits[idx],
-                                        entry.times[idx],
-                                        event.distances[idx]
-                                      );
-                                      return time ? parseTimeToSeconds(time) : 0;
-                                    });
-                                    const total = times.reduce((sum, t) => sum + t, 0);
+                        {(() => {
+                          const times = event.legs.map((stroke, idx) => {
+                            const time = entry.times[idx] || calculateLegTime(
+                              entry.athletes[idx],
+                              idx,
+                              stroke,
+                              eventName,
+                              entry.useRelaySplits[idx],
+                              entry.times[idx],
+                              event.distances[idx]
+                            );
+                            return time ? parseTimeToSeconds(time) : 0;
+                          });
+                          const total = times.reduce((sum, t) => sum + t, 0);
                                     return total > 0 ? formatSecondsToTime(total) : "—";
-                                  })()}
-                                </span>
+                        })()}
+                      </span>
                                 <span className="w-7" aria-hidden />
                               </div>
                             </TableCell>
@@ -783,7 +783,7 @@ export function RelayCreator({
             {Object.keys(athleteRelayAssignments).length === 0 ? (
               <div className="p-4 text-center text-sm text-slate-500">
                 Add swimmers to relays to see the matrix here.
-              </div>
+                    </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table className="w-full" style={{ minWidth: "max-content" }}>
@@ -871,13 +871,13 @@ export function RelayCreator({
                           return <TableCell key={evt.id} className="min-w-[8rem] px-4 py-2 text-center align-middle text-slate-400">—</TableCell>;
                         }
                         const times = evt.legs.map((stroke, idx) => {
-                          const time = entry.times[idx] || calculateLegTime(
-                            entry.athletes[idx],
-                            idx,
-                            stroke,
-                            eventName,
-                            entry.useRelaySplits[idx],
-                            entry.times[idx],
+                        const time = entry.times[idx] || calculateLegTime(
+                          entry.athletes[idx],
+                          idx,
+                          stroke,
+                          eventName,
+                          entry.useRelaySplits[idx],
+                          entry.times[idx],
                             evt.distances[idx]
                           );
                           return time ? parseTimeToSeconds(time) : 0;
@@ -898,8 +898,8 @@ export function RelayCreator({
                 </Table>
               </div>
             )}
-          </div>
-        </div>
+                    </div>
+                  </div>
       </CardContent>
     </Card>
   );

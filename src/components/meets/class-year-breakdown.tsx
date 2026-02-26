@@ -133,6 +133,12 @@ export function ClassYearBreakdown({
         points = relay.points;
       } else if (relay.place !== null && relay.place <= scoringPlaces) {
         points = relayScoring[relay.place.toString()] || 0;
+      } else if (
+        relay.points === null &&
+        relay.place === null &&
+        relay.seedTimeSeconds !== null
+      ) {
+        points = 0;
       } else if (relay.seedTimeSeconds !== null) {
         const eventRelays = relayEntries.filter((r) => r.eventId === relay.eventId);
         const sorted = [...eventRelays].sort((a, b) => {
@@ -215,14 +221,23 @@ export function ClassYearBreakdown({
         };
       }
 
-      // Calculate points
+      // Calculate points: use provided points/place when present. When both are null
+      // (e.g. real view for entries without applied results), use 0 — do not derive from seed.
       let points = 0;
       if (lineup.points !== null) {
         points = lineup.points;
       } else if (lineup.place !== null && lineup.place <= scoringPlaces) {
         points = individualScoring[lineup.place.toString()] || 0;
+      } else if (
+        lineup.points === null &&
+        lineup.place === null &&
+        lineup.seedTimeSeconds !== null
+      ) {
+        // Both null means view intentionally left this entry out (e.g. Actual mode);
+        // do not use seed-time fallback.
+        points = 0;
       } else if (lineup.seedTimeSeconds !== null) {
-        // Calculate place from seed time
+        // Derive place from seed (e.g. simulated view or place > scoringPlaces)
         const eventLineups = meetLineups.filter((l) => l.eventId === lineup.eventId);
         const sorted = [...eventLineups].sort((a, b) => {
           const aTime = a.seedTimeSeconds ?? Infinity;

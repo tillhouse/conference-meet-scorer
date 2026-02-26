@@ -271,6 +271,12 @@ export function MeetAthleteSummaryTable({
       }
 
       const summary = summariesMap.get(athleteId)!;
+
+      // When view left both place and points null (e.g. Actual mode for non-result entries),
+      // do not derive from seed — skip this lineup so it doesn't contribute.
+      if (lineup.place === null && lineup.points === null) {
+        return;
+      }
       
       // Calculate place based on seedTimeSeconds (if not already set)
       let place = lineup.place;
@@ -355,7 +361,10 @@ export function MeetAthleteSummaryTable({
     // Process relay events
     relayEntries.forEach((relay) => {
       if (!relay.members) return;
-      
+
+      // When view left both place and points null (e.g. Actual mode), skip so it doesn't contribute.
+      if (relay.place === null && relay.points === null) return;
+
       let memberIds: string[] = [];
       try {
         memberIds = JSON.parse(relay.members) as string[];

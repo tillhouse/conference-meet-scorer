@@ -188,6 +188,17 @@ export default async function MeetDetailPage({
     return { ...mt, individualScore: p.individual, relayScore: p.relay, divingScore: p.diving, totalScore: p.total };
   });
 
+  // For Combined mode, "vs Proj." must compare to full projected (all events); for Actual, compare to projected in scored events only
+  const teamsWithSim = meet.meetTeams as MeetTeamWithSim[];
+  const projectedMeetTeamsFull = teamsWithSim.map((mt) => ({
+    ...mt,
+    individualScore: mt.simulatedIndividualScore ?? 0,
+    relayScore: mt.simulatedRelayScore ?? 0,
+    divingScore: mt.simulatedDivingScore ?? 0,
+    totalScore: mt.simulatedTotalScore ?? 0,
+  }));
+  const projectedMeetTeamsForDelta = scoringMode === "hybrid" ? projectedMeetTeamsFull : projectedMeetTeams;
+
   let displayMeetTeams: typeof meet.meetTeams;
   let displayMeetLineups: typeof meet.meetLineups;
   let displayRelayEntries: typeof meet.relayEntries;
@@ -402,7 +413,7 @@ export default async function MeetDetailPage({
         relayEntries={displayRelayEntries}
         durationDays={durationDays}
         eventDays={eventDays}
-        projectedMeetTeams={projectedMeetTeams}
+        projectedMeetTeams={projectedMeetTeamsForDelta}
         scoringMode={scoringMode}
       />
 

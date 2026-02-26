@@ -5,6 +5,7 @@ import { MeetAthleteSummaryTable } from "@/components/meets/meet-athlete-summary
 import { MeetNavigation } from "@/components/meets/meet-navigation";
 import { BackToMeetButton } from "@/components/meets/back-to-meet-button";
 import { sortEventsByOrder } from "@/lib/event-utils";
+import { getComputedMeetView } from "@/lib/meet-simulate-compute";
 
 export default async function MeetAthletesPage({
   params,
@@ -57,11 +58,29 @@ export default async function MeetAthletesPage({
     notFound();
   }
 
-  const lineupAthleteIds = new Set(meet.meetLineups.map((l) => l.athleteId));
+  const realResultsEventIds = meet.realResultsEventIds
+    ? (JSON.parse(meet.realResultsEventIds) as string[])
+    : [];
+  const individualScoring = meet.individualScoring
+    ? (JSON.parse(meet.individualScoring) as Record<string, number>)
+    : {};
+  const relayScoring = meet.relayScoring
+    ? (JSON.parse(meet.relayScoring) as Record<string, number>)
+    : {};
+  const scoringMode = (meet.scoringMode ?? "simulated") as "simulated" | "real" | "hybrid";
+  const meetForCompute = { ...meet, individualScoring, relayScoring };
+
+  const { meetLineups, relayEntries, meetTeams } = getComputedMeetView(
+    meetForCompute,
+    scoringMode,
+    realResultsEventIds
+  );
+
+  const lineupAthleteIds = new Set(meetLineups.map((l) => l.athleteId));
 
   // Collect athlete IDs that appear in any relay's members
   const relayMemberIds = new Set<string>();
-  meet.relayEntries.forEach((entry) => {
+  relayEntries.forEach((entry) => {
     if (!entry.members) return;
     try {
       const ids = JSON.parse(entry.members) as (string | null)[];
@@ -83,13 +102,6 @@ export default async function MeetAthletesPage({
           },
         })
       : [];
-
-  const individualScoring = meet.individualScoring
-    ? (JSON.parse(meet.individualScoring) as Record<string, number>)
-    : {};
-  const relayScoring = meet.relayScoring
-    ? (JSON.parse(meet.relayScoring) as Record<string, number>)
-    : {};
 
   const selectedEventIds = meet.selectedEvents
     ? (JSON.parse(meet.selectedEvents) as string[])
@@ -136,16 +148,16 @@ export default async function MeetAthletesPage({
         </CardHeader>
         <CardContent>
           <MeetAthleteSummaryTable
-            meetLineups={meet.meetLineups}
-            relayEntries={meet.relayEntries}
+            meetLineups={meetLineups}
+            relayEntries={relayEntries}
             relayOnlyAthletes={relayOnlyAthletes}
-            events={events}
-            individualScoring={individualScoring}
-            relayScoring={relayScoring}
-            scoringPlaces={meet.scoringPlaces}
-            testSpotAthleteIds={testSpotAthleteIds}
-            meetId={id}
-            meetTeams={meet.meetTeams.map((mt) => ({
+        events={events}
+        individualScoring={individualScoring}
+        relayScoring={relayScoring}
+        scoringPlaces={meet.scoringPlaces}
+        testSpotAthleteIds={testSpotAthleteIds}
+        meetId={id}
+        meetTeams={meetTeams.map((mt) => ({
               teamId: mt.teamId,
               sensitivityVariantAthleteId: (mt as { sensitivityVariantAthleteId?: string | null }).sensitivityVariantAthleteId,
               sensitivityVariant: (mt as { sensitivityVariant?: string | null }).sensitivityVariant,

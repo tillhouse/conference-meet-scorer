@@ -12,9 +12,9 @@ import {
 export type ViewMode = "simulated" | "real" | "hybrid";
 
 const VIEW_LABELS: Record<ViewMode, string> = {
-  simulated: "Simulated (seed times)",
-  real: "Real results",
-  hybrid: "Hybrid (real + simulated)",
+  simulated: "Projected",
+  real: "Actual",
+  hybrid: "Combined",
 };
 
 const VALID_VIEWS: ViewMode[] = ["simulated", "real", "hybrid"];
@@ -29,6 +29,7 @@ export function PublicViewModeSelector() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const value = parseView(searchParams?.get("view"));
+  const labelForTrigger = VIEW_LABELS[value];
 
   const handleChange = (newView: ViewMode) => {
     const next = new URLSearchParams(searchParams?.toString() ?? "");
@@ -38,13 +39,34 @@ export function PublicViewModeSelector() {
 
   return (
     <Select value={value} onValueChange={(v) => handleChange(v as ViewMode)}>
-      <SelectTrigger className="w-[220px]">
-        <SelectValue placeholder="Results view" />
+      <SelectTrigger className="w-[160px]">
+        <SelectValue placeholder="Results view">{labelForTrigger}</SelectValue>
       </SelectTrigger>
       <SelectContent className="max-h-[12rem]" side="bottom" avoidCollisions={false}>
-        <SelectItem value="simulated">{VIEW_LABELS.simulated}</SelectItem>
-        <SelectItem value="real">{VIEW_LABELS.real}</SelectItem>
-        <SelectItem value="hybrid">{VIEW_LABELS.hybrid}</SelectItem>
+        <SelectItem value="simulated">
+          <div>
+            <div>Projected</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Based on athletes&apos; seed times
+            </div>
+          </div>
+        </SelectItem>
+        <SelectItem value="real">
+          <div>
+            <div>Actual</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Scored from officially entered results
+            </div>
+          </div>
+        </SelectItem>
+        <SelectItem value="hybrid">
+          <div>
+            <div>Combined</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Actual where available, projected otherwise
+            </div>
+          </div>
+        </SelectItem>
       </SelectContent>
     </Select>
   );

@@ -10,7 +10,6 @@ import { EventNavigation } from "@/components/meets/event-navigation";
 import { PublicMeetNavigation } from "@/components/meets/public-meet-navigation";
 import {
   getComputedMeetView,
-  hasRealResults,
   hasSimulatedData,
   type ViewMode,
 } from "@/lib/meet-simulate-compute";
@@ -87,6 +86,25 @@ export default async function PublicEventDetailPage({
     notFound();
   }
 
+  type LineupWithSim = (typeof meet.meetLineups)[number] & {
+    simulatedPlace?: number | null;
+    simulatedPoints?: number | null;
+    realResultApplied?: boolean;
+  };
+  type RelayWithSim = (typeof meet.relayEntries)[number] & {
+    simulatedPlace?: number | null;
+    simulatedPoints?: number | null;
+    realResultApplied?: boolean;
+  };
+
+  const eventsWithActualResults = new Set<string>();
+  (meet.meetLineups as LineupWithSim[]).forEach((l) => {
+    if (l.realResultApplied) eventsWithActualResults.add(l.eventId);
+  });
+  (meet.relayEntries as RelayWithSim[]).forEach((r) => {
+    if (r.realResultApplied) eventsWithActualResults.add(r.eventId);
+  });
+
   const realResultsEventIds = meet.realResultsEventIds
     ? (JSON.parse(meet.realResultsEventIds) as string[])
     : [];
@@ -109,12 +127,41 @@ export default async function PublicEventDetailPage({
 
   const hasDataForView =
     view === "real"
-      ? hasRealResults(meet, realResultsEventIds)
-      : hasSimulatedData(meet);
+      ? eventsWithActualResults.size > 0
+      : view === "simulated"
+        ? hasSimulatedData(meet)
+        : hasSimulatedData(meet) || eventsWithActualResults.size > 0;
 
   const eventHasRealResults =
-    (view === "real" || view === "hybrid") && realResultsEventIds.includes(eventId);
+    (view === "real" || view === "hybrid") &&
+    ((meet.meetLineups as LineupWithSim[]).some(
+      (l) => l.eventId === eventId && l.realResultApplied
+    ) ||
+      (meet.relayEntries as RelayWithSim[]).some(
+        (r) => r.eventId === eventId && r.realResultApplied
+      ));
   const realResultsMode = view === "real" || view === "hybrid";
+
+  const projectedLineups =
+    eventHasRealResults
+      ? (meet.meetLineups as LineupWithSim[])
+          .filter((l) => l.eventId === eventId)
+          .map((l) => ({
+            athleteId: l.athlete.id,
+            simulatedPlace: l.simulatedPlace ?? null,
+            simulatedPoints: l.simulatedPoints ?? null,
+          }))
+      : undefined;
+  const projectedRelays =
+    eventHasRealResults
+      ? (meet.relayEntries as RelayWithSim[])
+          .filter((r) => r.eventId === eventId)
+          .map((r) => ({
+            teamId: r.teamId,
+            simulatedPlace: r.simulatedPlace ?? null,
+            simulatedPoints: r.simulatedPoints ?? null,
+          }))
+      : undefined;
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -253,6 +300,8 @@ export default async function PublicEventDetailPage({
         readOnly
         eventHasRealResults={eventHasRealResults}
         realResultsMode={realResultsMode}
+        projectedLineups={projectedLineups}
+        projectedRelays={projectedRelays}
       />
     </div>
   );
