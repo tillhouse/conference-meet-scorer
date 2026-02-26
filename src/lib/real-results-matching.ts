@@ -41,7 +41,7 @@ export function buildSchoolToTeamIdMap(meetTeams: MeetTeamForMatch[]): Map<strin
       if (base) map.set(base.toLowerCase(), tid);
     }
   }
-  // Common abbreviations
+  // Common abbreviations (Hytek format: BROW, Yale-CT, Princeton-NJ, HARV-NE, CORN, Penn-MA, Dartmouth-NE, Columbia)
   const abbr: Record<string, string> = {
     harv: "harvard",
     prin: "princeton",
@@ -51,17 +51,21 @@ export function buildSchoolToTeamIdMap(meetTeams: MeetTeamForMatch[]): Map<strin
     dart: "dartmouth",
     columbia: "columbia",
     cubc: "columbia",
+    colu: "columbia",
     cornell: "cornell",
     corn: "cornell",
     coru: "cornell",
     brow: "brown",
+    upenn: "penn",
+    pennsylvania: "penn",
   };
   for (const mt of meetTeams) {
     const tid = mt.teamId;
     const school = ((mt.team.schoolName || mt.team.name || "").trim()).toLowerCase();
+    const name = (mt.team.name || "").trim().toLowerCase();
     const firstWord = school.split(/\s+/)[0] || school;
     for (const [ab, full] of Object.entries(abbr)) {
-      if (full === firstWord || school.includes(full)) {
+      if (full === firstWord || school.includes(full) || name.includes(full)) {
         map.set(ab, tid);
       }
     }
@@ -349,15 +353,27 @@ export function resolveSchoolToTeamId(
   if (schoolToTeamId.has(key)) return schoolToTeamId.get(key)!;
 
   // 2. Strip LSC/state suffix (e.g., "yale-ct" → "yale", "harv-ne" → "harv")
-  const withoutSuffix = key.replace(/-[a-z]{2,3}$/i, "");
+  const withoutSuffix = key.replace(/-[a-z0-9]{2,4}$/i, "");
   if (withoutSuffix !== key && schoolToTeamId.has(withoutSuffix)) {
     return schoolToTeamId.get(withoutSuffix)!;
   }
 
   // 3. Try first token before any hyphen or space
   const firstToken = key.split(/[-\s]/)[0];
-  if (firstToken && firstToken !== key && firstToken !== withoutSuffix && schoolToTeamId.has(firstToken)) {
-    return schoolToTeamId.get(firstToken)!;
+  if (firstToken) {
+    if (schoolToTeamId.has(firstToken)) return schoolToTeamId.get(firstToken)!;
+    // Also try when firstToken differs from key (e.g. "princeton" from "princeton-nj")
+    if (firstToken !== key && firstToken !== withoutSuffix && schoolToTeamId.has(firstToken)) {
+      return schoolToTeamId.get(firstToken)!;
+    }
+  }
+
+  // 4. Prefix match: map key starts with term or vice versa (min 3 chars to avoid false positives)
+  const searchTerms = [withoutSuffix, firstToken].filter((s) => s && s.length >= 3);
+  for (const term of searchTerms) {
+    for (const [mapKey, teamId] of schoolToTeamId) {
+      if (mapKey.length >= 3 && (mapKey.startsWith(term) || term.startsWith(mapKey))) return teamId;
+    }
   }
 
   return null;

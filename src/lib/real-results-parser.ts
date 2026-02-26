@@ -121,7 +121,7 @@ function parseIndividualSplitsFromLines(lines: string[]): {
 
 /** True if line looks like start of a new swimmer (place + name + year + school). */
 function isIndividualDataLine(line: string): boolean {
-  return /^\s*\d+\s+.+?\s+(SR|JR|FR|SO|GR)\s+[A-Za-z]+\s+/i.test(line.trim());
+  return /^\s*(?:\d+|--)\s+.+?\s+(SR|JR|FR|SO|GR)\s+[A-Za-z]+(?:-[A-Za-z0-9]+)?\s+/i.test(line.trim());
 }
 
 /** True if line is a continuation (splits/reaction) for the previous swimmer. */
@@ -174,9 +174,54 @@ export function parseIndividualSwimming(text: string): ParseResult<IndividualRow
       continue;
     }
 
+    // Alternate/DQ line: "-- Name Year School ... time" (no place)
+    const altLeading = line.match(/^\s*--\s+(.+?)\s+(SR|JR|FR|SO|GR)\s+([A-Za-z]+(?:-[A-Za-z0-9]+)?)\s+/i);
+    if (altLeading) {
+      const name = trim(altLeading[1]);
+      const school = altLeading[3].trim();
+      const rest = line.slice(line.indexOf(altLeading[3]) + altLeading[3].length).trim();
+      const timeLike = /[\d:.]+!?/g;
+      const restNoX = rest.replace(/^X/i, "").trim();
+      const allTokens: string[] = [];
+      let m: RegExpExecArray | null;
+      while ((m = timeLike.exec(restNoX)) !== null) {
+        allTokens.push(m[0].replace("!", "").trim());
+      }
+      const isSwimTime = (t: string) =>
+        t.includes(":") || (/^\d+\.\d{2}$/.test(t) && parseFloat(t) >= 10);
+      const swimTimes = allTokens.filter(isSwimTime);
+      const timeStr = swimTimes.length >= 1 ? swimTimes[swimTimes.length - 1] : "";
+      if (timeStr) {
+        const year = altLeading[2] ? String(altLeading[2]).trim().toUpperCase() : null;
+        const row: IndividualRow = {
+          place: 999,
+          name,
+          school,
+          timeStr,
+          year: year ?? undefined,
+        };
+        const continuationLines: string[] = [];
+        while (i < lines.length && isIndividualContinuationLine(lines[i]) && !isIndividualDataLine(lines[i])) {
+          continuationLines.push(lines[i]);
+          i++;
+        }
+        if (continuationLines.length > 0) {
+          const parsed = parseIndividualSplitsFromLines(continuationLines);
+          if (parsed.cumulativeSplits.length > 0 || parsed.subSplits.length > 0 || parsed.reactionTimeSeconds != null) {
+            row.reactionTimeSeconds = parsed.reactionTimeSeconds ?? undefined;
+            row.cumulativeSplits = parsed.cumulativeSplits.length > 0 ? parsed.cumulativeSplits : undefined;
+            row.subSplits = parsed.subSplits.length > 0 ? parsed.subSplits : undefined;
+          }
+        }
+        rows.push(row);
+        continue;
+      }
+    }
+
     // Data line: place, name, year, school, then times
+    // School may have LSC/state suffix (e.g. Yale-CT, HARV-NE, Princeton-NJ)
     const timeLike = /[\d:.]+!?/g;
-    const leading = line.match(/^\s*(\d+)\s+(.+?)\s+(SR|JR|FR|SO|GR)\s+([A-Za-z]+)\s+/i);
+    const leading = line.match(/^\s*(\d+)\s+(.+?)\s+(SR|JR|FR|SO|GR)\s+([A-Za-z]+(?:-[A-Za-z0-9]+)?)\s+/i);
     if (leading) {
       const place = parseInt(leading[1], 10);
       const name = trim(leading[2]);
@@ -221,9 +266,10 @@ export function parseIndividualSwimming(text: string): ParseResult<IndividualRow
         rows.push(row);
         continue;
       }
+      errors.push(`Dropped row place=${place} school=${school}: no valid time from "${rest.slice(0, 80)}"`);
     }
 
-    const fallback = line.match(/^\s*(\d+)\s+(.+?)\s+(SR|JR|FR|SO|GR)\s+([A-Za-z]+)\s+([\d:.]+)!?\s*$/i);
+    const fallback = line.match(/^\s*(\d+)\s+(.+?)\s+(SR|JR|FR|SO|GR)\s+([A-Za-z]+(?:-[A-Za-z0-9]+)?)\s+([\d:.]+)!?\s*$/i);
     if (fallback) {
       const year = fallback[3] ? String(fallback[3]).trim().toUpperCase() : null;
       const row: IndividualRow = {

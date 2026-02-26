@@ -223,35 +223,9 @@ export async function POST(
         }
         const timeSeconds = row.timeStr === "DQ" || row.timeStr === "XDQ" ? null : parseTimeToSeconds(row.timeStr);
 
-        // If parsed relay has leg names, match to team athletes and set members
-        let membersJson: string | undefined;
-        if (row.legs != null && row.legs.length > 0) {
-          const teamAthletes = await prisma.athlete.findMany({
-            where: { teamId },
-            select: { id: true, firstName: true, lastName: true, year: true },
-          });
-          const athletesForMatch: AthleteForMatch[] = teamAthletes.map((a) => ({
-            id: a.id,
-            firstName: a.firstName,
-            lastName: a.lastName,
-            year: a.year ?? null,
-          }));
-          const memberIds: (string | null)[] = [];
-          for (let i = 0; i < 4; i++) {
-            const leg = row.legs[i];
-            if (!leg?.name?.trim()) {
-              memberIds.push(null);
-              continue;
-            }
-            const match = matchAthleteByName(leg.name, athletesForMatch, leg.year ?? null);
-            memberIds.push(match.kind === "match" ? match.athlete.id : null);
-          }
-          membersJson = JSON.stringify(memberIds);
-        }
-
-        // Build splitsData and legTimes from parsed leg data
+        // Build splitsData from parsed leg data (for Actual view display). Do NOT write members
+        // or legTimes - those belong to the projected lineup from Create Relays.
         let splitsDataJson: string | undefined;
-        let legTimesJson: string | undefined;
         if (row.legs && row.legs.length > 0) {
           const splitsData = {
             legs: row.legs.map((leg) => ({
@@ -263,12 +237,6 @@ export async function POST(
             relayCumulativeAt50: row.relayCumulativeAt50 ?? [],
           };
           splitsDataJson = JSON.stringify(splitsData);
-          legTimesJson = JSON.stringify(
-            row.legs.map((leg) => {
-              const cumArr = leg.cumulativeLeg;
-              return cumArr.length > 0 ? cumArr[cumArr.length - 1] : null;
-            })
-          );
         }
 
         let relay = await prisma.relayEntry.findUnique({
@@ -276,6 +244,8 @@ export async function POST(
             meetId_teamId_eventId: { meetId, teamId, eventId },
           },
         });
+        // Only update actual-result fields (finalTime, place, points, splitsData). Do NOT overwrite
+        // members or legTimes - those are for the projected lineup from Create Relays.
         if (!relay) {
           relay = await prisma.relayEntry.create({
             data: {
@@ -287,9 +257,7 @@ export async function POST(
               place: assignedPlace,
               points: assignedPoints,
               realResultApplied: true,
-              ...(membersJson != null && { members: membersJson }),
               ...(splitsDataJson != null && { splitsData: splitsDataJson }),
-              ...(legTimesJson != null && { legTimes: legTimesJson }),
             },
           });
         } else {
@@ -301,9 +269,7 @@ export async function POST(
               place: assignedPlace,
               points: assignedPoints,
               realResultApplied: true,
-              ...(membersJson != null && { members: membersJson }),
               ...(splitsDataJson != null && { splitsData: splitsDataJson }),
-              ...(legTimesJson != null && { legTimes: legTimesJson }),
             },
           });
         }
@@ -518,12 +484,18 @@ export async function POST(
 /** Clear all results (place, time, points, splits) for this event. */
 export async function DELETE(
   _request: NextRequest,
-  context: { params: Promise<{ meetId: string; eventId: string }> }
+  { params }: { params: Promise<{ meetId: string; eventId: string }> }
 ) {
   try {
-    const { meetId, eventId } = await context.params;
+    const { meetId, eventId } = await params;
+    if (!meetId || !eventId) {
+      return NextResponse.json(
+        { error: "meetId and eventId are required" },
+        { status: 400 }
+      );
+    }
 
-    const lineupResult = await prisma.meetLineup.updateMany({
+    await prisma.meetLineup.updateMany({
       where: { meetId, eventId },
       data: {
         finalTime: null,
@@ -531,6 +503,7 @@ export async function DELETE(
         place: null,
         points: null,
         realResultApplied: false,
+        splitsData: null, // Parsed actual splits from Apply results
       },
     });
 
@@ -542,8 +515,11 @@ export async function DELETE(
         place: null,
         points: null,
         realResultApplied: false,
+        splitsData: null, // Parsed actual splits; members/legTimes (projected) are preserved
       },
     });
+
+    await recomputeMeetTeamScores(meetId);
 
     // Ensure event is in realResultsEventIds so the table shows only finalTime entries (empty after clear).
     // If the event was never applied (only simulated), it wouldn't be in the list otherwise.
