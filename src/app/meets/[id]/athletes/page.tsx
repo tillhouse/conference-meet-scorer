@@ -124,7 +124,7 @@ export default async function MeetAthletesPage({
       </div>
 
       {/* Navigation */}
-      <MeetNavigation meetId={id} status={meet.status} />
+      <MeetNavigation meetId={id} status={meet.status} scoringMode={meet.scoringMode} />
 
       {/* Athlete Summary Table */}
       <Card>

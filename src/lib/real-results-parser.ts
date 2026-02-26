@@ -21,6 +21,7 @@ export type IndividualRow = {
 export type RelayLeg = {
   reactionTimeSeconds: number | null;
   name: string;
+  year?: string | null;
   cumulativeLeg: string[];
   subSplits?: string[];
 };
@@ -254,7 +255,7 @@ export function parseIndividualSwimming(text: string): ParseResult<IndividualRow
 
 /** True if line looks like relay team result (place, school, seed, finals). */
 function isRelayTeamLine(line: string): boolean {
-  return /^\s*\d+\s+.+?\s+[\d:.]+\s+[\d:.@!]+\s*(\d+)?\s*$/.test(line.trim());
+  return /^\s*\d+\s+.+?\s+[\d:.]+\s+[\d:.@!*%#$]+\s*(\d+)?\s*$/.test(line.trim());
 }
 
 /** True if line looks like a DQ relay line: "-- School  'A'  seed  XDQ" (trailing content allowed) */
@@ -266,19 +267,20 @@ function isRelayDQLine(line: string): boolean {
 const SWIMMER_SEGMENT_RE = /\d+\)\s*(?:r:([+-]?\d+\.?\d*)\s+)?(.+?)\s+(SR|JR|FR|SO|GR)(?=\s*\d+\)|\s*$)/gi;
 
 /** Parse one "1) Mostek, Anya SR" or "2) r:0.15 Marakovic, Aliana FR" segment. */
-function parseRelaySwimmerSegment(segment: string): { name: string; reactionTimeSeconds: number | null } | null {
+function parseRelaySwimmerSegment(segment: string): { name: string; year: string | null; reactionTimeSeconds: number | null } | null {
   const m = segment.match(/\d+\)\s*(?:r:([+-]?\d+\.?\d*)\s+)?(.+?)\s+(SR|JR|FR|SO|GR)\s*$/i);
   if (!m) return null;
   const reaction = m[1] != null ? parseFloat(m[1]) : null;
   return {
     name: trim(m[2]),
+    year: m[3] ? m[3].trim().toUpperCase() : null,
     reactionTimeSeconds: reaction != null && Number.isFinite(reaction) ? reaction : null,
   };
 }
 
 /** Extract all "N) Name Year" segments from a line (may contain multiple swimmers). */
-function parseRelaySwimmerLine(line: string): { name: string; reactionTimeSeconds: number | null }[] {
-  const results: { name: string; reactionTimeSeconds: number | null }[] = [];
+function parseRelaySwimmerLine(line: string): { name: string; year: string | null; reactionTimeSeconds: number | null }[] {
+  const results: { name: string; year: string | null; reactionTimeSeconds: number | null }[] = [];
   SWIMMER_SEGMENT_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = SWIMMER_SEGMENT_RE.exec(line)) !== null) {
@@ -312,6 +314,7 @@ function parseRelaySplitsFromLines(
         legs.push({
           reactionTimeSeconds: parsed.reactionTimeSeconds,
           name: parsed.name,
+          year: parsed.year,
           cumulativeLeg: [],
           subSplits: [],
         });
@@ -489,14 +492,14 @@ export function parseRelay(text: string): ParseResult<RelayRow> {
       continue;
     }
 
-    const relayLineRe = /^\s*(\d+)\s+(.+?)\s+([\d:.]+)\s+([\d:.@!]+)\s*(\d+)?\s*$/;
+    const relayLineRe = /^\s*(\d+)\s+(.+?)\s+([\d:.]+)\s+([\d:.@!*%#$]+)\s*(\d+)?\s*$/;
     const m = line.match(relayLineRe);
     if (m) {
       let school = trim(m[2]).replace(/\s*'[AB]'\s*$/i, "").trim();
       const row: RelayRow = {
         place: parseInt(m[1], 10),
         school,
-        timeStr: m[4].replace(/[@!]/g, "").trim(),
+        timeStr: m[4].replace(/[@!*%#$]/g, "").trim(),
         points: m[5] ? parseInt(m[5], 10) : null,
       };
       const continuationLines: string[] = [];

@@ -137,6 +137,38 @@ export default async function EventDetailPage({
   const hasResults = meet.meetLineups.some((l) => l.place !== null) || 
                      meet.relayEntries.some((r) => r.place !== null);
 
+  let realResultsEventIds: string[] = [];
+  try {
+    realResultsEventIds = meet.realResultsEventIds
+      ? (JSON.parse(meet.realResultsEventIds) as string[])
+      : [];
+  } catch {
+    realResultsEventIds = [];
+  }
+  // In real/hybrid mode, detect from the data whether this event has actual results applied.
+  const eventHasRealResults =
+    (meet.scoringMode === "real" || meet.scoringMode === "hybrid") &&
+    (meet.meetLineups.some((l) => l.eventId === eventId && (l as { realResultApplied?: boolean }).realResultApplied === true) ||
+     meet.relayEntries.some((r) => r.eventId === eventId && (r as { realResultApplied?: boolean }).realResultApplied === true));
+  const realResultsMode = meet.scoringMode === "real" || meet.scoringMode === "hybrid";
+
+  type LineupWithSim = (typeof meet.meetLineups)[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null };
+  type RelayWithSim = (typeof meet.relayEntries)[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null };
+  const projectedLineups = eventHasRealResults
+    ? (meet.meetLineups as LineupWithSim[]).map((l) => ({
+        athleteId: l.athlete.id,
+        simulatedPlace: l.simulatedPlace ?? null,
+        simulatedPoints: l.simulatedPoints ?? null,
+      }))
+    : undefined;
+  const projectedRelays = eventHasRealResults
+    ? (meet.relayEntries as RelayWithSim[]).map((r) => ({
+        teamId: r.teamId,
+        simulatedPlace: r.simulatedPlace ?? null,
+        simulatedPoints: r.simulatedPoints ?? null,
+      }))
+    : undefined;
+
   const testSpotAthleteIds: string[] = [];
   meet.meetTeams?.forEach((mt) => {
     const raw = (mt as { testSpotAthleteIds?: string | null }).testSpotAthleteIds;
@@ -181,7 +213,7 @@ export default async function EventDetailPage({
       </div>
 
       {/* Navigation */}
-      <MeetNavigation meetId={id} status={meet.status} />
+      <MeetNavigation meetId={id} status={meet.status} scoringMode={meet.scoringMode} />
 
       {/* Event Navigation */}
       <EventNavigation
@@ -222,6 +254,10 @@ export default async function EventDetailPage({
           sensitivityPercent: (mt as { sensitivityPercent?: number | null }).sensitivityPercent,
           team: mt.team,
         }))}
+        eventHasRealResults={eventHasRealResults}
+        realResultsMode={realResultsMode}
+        projectedLineups={projectedLineups}
+        projectedRelays={projectedRelays}
       />
     </div>
   );

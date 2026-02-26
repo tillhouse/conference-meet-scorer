@@ -15,13 +15,15 @@ import {
   Beaker
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScoringModeSelector } from "@/components/meets/scoring-mode-selector";
 
 interface MeetNavigationProps {
   meetId: string;
   status: string;
+  scoringMode?: string | null;
 }
 
-export function MeetNavigation({ meetId, status }: MeetNavigationProps) {
+export function MeetNavigation({ meetId, status, scoringMode }: MeetNavigationProps) {
   const pathname = usePathname();
 
   const setupActions = [
@@ -135,6 +137,9 @@ export function MeetNavigation({ meetId, status }: MeetNavigationProps) {
             </Button>
           );
         })}
+        <div className="ml-auto">
+          <ScoringModeSelector meetId={meetId} value={scoringMode} />
+        </div>
       </div>
     </div>
   );

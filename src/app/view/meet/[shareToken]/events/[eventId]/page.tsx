@@ -112,6 +112,10 @@ export default async function PublicEventDetailPage({
       ? hasRealResults(meet, realResultsEventIds)
       : hasSimulatedData(meet);
 
+  const eventHasRealResults =
+    (view === "real" || view === "hybrid") && realResultsEventIds.includes(eventId);
+  const realResultsMode = view === "real" || view === "hybrid";
+
   const event = await prisma.event.findUnique({
     where: { id: eventId },
   });
@@ -247,6 +251,8 @@ export default async function PublicEventDetailPage({
           team: mt.team,
         }))}
         readOnly
+        eventHasRealResults={eventHasRealResults}
+        realResultsMode={realResultsMode}
       />
     </div>
   );

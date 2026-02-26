@@ -45,7 +45,8 @@ export async function POST(
       ? (JSON.parse(meet.relayScoring) as Record<string, number>)
       : {};
 
-    // Scoring mode: skip simulation for events that have real results (hybrid), or skip all overwrites (real)
+    // Scoring mode: we no longer skip events. Simulation always writes to simulated* only (never overwrites place/points/finalTime).
+    // Real results stay in place/points/finalTime; simulated-from-seed stays in simulatedPlace/simulatedPoints/simulatedTime.
     const scoringMode = meet.scoringMode ?? "simulated";
     let realResultsEventIds: string[] = [];
     try {
@@ -56,11 +57,7 @@ export async function POST(
       realResultsEventIds = [];
     }
 
-    const shouldSkipEvent = (eventId: string): boolean => {
-      if (scoringMode === "real") return true; // real mode: don't overwrite any event
-      if (scoringMode === "hybrid" && realResultsEventIds.includes(eventId)) return true;
-      return false;
-    };
+    const shouldSkipEvent = (_eventId: string): boolean => false; // no skip: always run sim and write to simulated*
 
     // Group lineups by event
     const lineupsByEvent: Record<string, typeof meet.meetLineups> = {};
@@ -164,19 +161,19 @@ export async function POST(
         }, 0);
         const averagePoints = tieCount > 0 ? totalPoints / tieCount : 0;
 
-        // Assign same place and average points to all tied entries
+        // Assign same place and average points to all tied entries (write to simulated* only)
         for (const lineup of tiedEntries) {
-          const finalTime = lineup.overrideTime ?? lineup.seedTime;
-          const finalTimeSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds;
+          const simulatedTime = lineup.overrideTime ?? lineup.seedTime;
+          const simulatedTimeSeconds = lineup.overrideTimeSeconds ?? lineup.seedTimeSeconds;
 
           await prisma.meetLineup.update({
             where: { id: lineup.id },
             data: {
-              place: currentPlace, // All tied entries get the same place
-              points: averagePoints,
-              finalTime,
-              finalTimeSeconds,
-            },
+              simulatedPlace: currentPlace,
+              simulatedPoints: averagePoints,
+              simulatedTime,
+              simulatedTimeSeconds,
+            } as Record<string, unknown>,
           });
         }
 
@@ -258,19 +255,19 @@ export async function POST(
         }, 0);
         const averagePoints = tieCount > 0 ? totalPoints / tieCount : 0;
 
-        // Assign same place and average points to all tied entries
+        // Assign same place and average points to all tied entries (write to simulated* only)
         for (const relay of tiedEntries) {
-          const finalTime = relay.overrideTime ?? relay.seedTime;
-          const finalTimeSeconds = relay.overrideTimeSeconds ?? relay.seedTimeSeconds;
+          const simulatedTime = relay.overrideTime ?? relay.seedTime;
+          const simulatedTimeSeconds = relay.overrideTimeSeconds ?? relay.seedTimeSeconds;
 
           await prisma.relayEntry.update({
             where: { id: relay.id },
             data: {
-              place: currentPlace, // All tied entries get the same place
-              points: averagePoints,
-              finalTime,
-              finalTimeSeconds,
-            },
+              simulatedPlace: currentPlace,
+              simulatedPoints: averagePoints,
+              simulatedTime,
+              simulatedTimeSeconds,
+            } as Record<string, unknown>,
           });
         }
 
@@ -327,7 +324,7 @@ export async function POST(
         },
       });
 
-      // Calculate scores by type (only scoring athletes count toward team total)
+      // Only scoring athletes count toward team total
       const individualEntries = teamLineups.filter(
         (l) => l.event.eventType === "individual" && scoringSet.has(l.athleteId)
       );
@@ -335,39 +332,40 @@ export async function POST(
         (l) => l.event.eventType === "diving" && scoringSet.has(l.athleteId)
       );
 
+      // Calculate scores by type from simulated* only (simulation never touches real place/points)
       const individualScore = individualEntries.reduce(
-        (sum, entry) => sum + (entry.points || 0),
+        (sum, entry) => sum + ((entry as { simulatedPoints?: number | null }).simulatedPoints ?? 0),
         0
       );
       const divingScore = divingEntries.reduce(
-        (sum, entry) => sum + (entry.points || 0),
+        (sum, entry) => sum + ((entry as { simulatedPoints?: number | null }).simulatedPoints ?? 0),
         0
       );
       const relayScore = teamRelays.reduce(
-        (sum, relay) => sum + (relay.points || 0),
+        (sum, relay) => sum + ((relay as { simulatedPoints?: number | null }).simulatedPoints ?? 0),
         0
       );
       const totalScore = individualScore + divingScore + relayScore;
 
-      // Update meet team scores (and persist default test-spot scorer if we had to pick one)
+      // Update meet team simulated scores only (real scores stay from apply-results)
       const updateData: {
-        individualScore: number;
-        divingScore: number;
-        relayScore: number;
-        totalScore: number;
+        simulatedIndividualScore: number;
+        simulatedDivingScore: number;
+        simulatedRelayScore: number;
+        simulatedTotalScore: number;
         testSpotScoringAthleteId?: string;
       } = {
-        individualScore,
-        divingScore,
-        relayScore,
-        totalScore,
+        simulatedIndividualScore: individualScore,
+        simulatedDivingScore: divingScore,
+        simulatedRelayScore: relayScore,
+        simulatedTotalScore: totalScore,
       };
       if (testSpotAthleteIds.length > 0 && testSpotScoringAthleteId && mt.testSpotScoringAthleteId !== testSpotScoringAthleteId) {
         updateData.testSpotScoringAthleteId = testSpotScoringAthleteId;
       }
       await prisma.meetTeam.update({
         where: { id: meetTeam.id },
-        data: updateData,
+        data: updateData as Record<string, unknown>,
       });
 
       // Sensitivity analysis: compute better/worse for each of up to 3 sensitivity athletes
@@ -424,7 +422,7 @@ export async function POST(
           let athletePointsWorse = 0;
           const lineupUpdates: { id: string; sensitivityPlaceBetter: number; sensitivityPointsBetter: number; sensitivityPlaceWorse: number; sensitivityPointsWorse: number }[] = [];
           for (const lineup of sensAthleteLineups) {
-            athletePointsBaseline += lineup.points ?? 0;
+            athletePointsBaseline += (lineup as { simulatedPoints?: number | null }).simulatedPoints ?? lineup.points ?? 0;
             const eventType = lineup.event.eventType;
             const eventLineups = lineupsByEventSens[lineup.eventId] ?? [];
             const baseTime = getTime(lineup);

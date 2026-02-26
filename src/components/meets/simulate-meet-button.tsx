@@ -13,13 +13,10 @@ interface SimulateMeetButtonProps {
 }
 
 export function SimulateMeetButton({ meetId, hasResults, scoringMode }: SimulateMeetButtonProps) {
-  const isHybrid = scoringMode === "hybrid";
-  const label = isHybrid
-    ? (hasResults ? "Re-score meet (real + simulated)" : "Score meet (real + simulated)")
-    : (hasResults ? "Re-simulate" : "Simulate Meet");
-  const title = isHybrid
-    ? "Score meet: use real results where entered, simulate the rest"
-    : undefined;
+  const modeLabel = scoringMode === "hybrid" ? "Combined"
+    : scoringMode === "real" ? "Actual"
+    : "Projected";
+  const label = hasResults ? `Re-score ${modeLabel}` : `Score ${modeLabel}`;
   const router = useRouter();
   const [isSimulating, setIsSimulating] = useState(false);
   const [isBackfilling, setIsBackfilling] = useState(false);
@@ -95,9 +92,9 @@ export function SimulateMeetButton({ meetId, hasResults, scoringMode }: Simulate
         <RefreshCw className="h-4 w-4 mr-2" />
         {isBackfilling ? "Filling Times..." : "Fill Missing Times"}
       </Button>
-      <Button onClick={handleSimulate} disabled={isSimulating || isBackfilling} size="sm" title={title}>
+      <Button onClick={handleSimulate} disabled={isSimulating || isBackfilling} size="sm">
         <Play className="h-4 w-4 mr-2" />
-        {isSimulating ? "Simulating..." : label}
+        {isSimulating ? "Scoring..." : label}
       </Button>
     </div>
   );

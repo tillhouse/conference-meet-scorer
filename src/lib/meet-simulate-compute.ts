@@ -20,6 +20,7 @@ type MeetLineupRow = {
   overrideTimeSeconds: number | null;
   seedTime: string | null;
   seedTimeSeconds: number | null;
+  realResultApplied?: boolean;
   event: { eventType: string };
   athlete?: { teamId?: string };
 };
@@ -36,6 +37,7 @@ type RelayEntryRow = {
   overrideTimeSeconds: number | null;
   seedTime: string | null;
   seedTimeSeconds: number | null;
+  realResultApplied?: boolean;
   team?: unknown;
   event?: unknown;
 };
@@ -95,9 +97,14 @@ export function getComputedMeetView(
   const relayScoring = meet.relayScoring ?? {};
   const scoringPlaces = meet.scoringPlaces ?? 24;
 
+  // Detect which events have actual results from the data itself
+  const eventsWithActual = new Set<string>();
+  meet.meetLineups.forEach((l) => { if (l.realResultApplied) eventsWithActual.add(l.eventId); });
+  meet.relayEntries.forEach((r) => { if (r.realResultApplied) eventsWithActual.add(r.eventId); });
+
   const shouldSkipEvent = (eventId: string): boolean => {
     if (view === "real") return true;
-    if (view === "hybrid" && realResultsEventIds.includes(eventId)) return true;
+    if (view === "hybrid" && eventsWithActual.has(eventId)) return true;
     return false;
   };
 
@@ -116,12 +123,12 @@ export function getComputedMeetView(
     finalTimeSeconds: r.finalTimeSeconds,
   }));
 
-  // For "real" view: clear place/points for events that have NOT had real results applied,
-  // so only events in realResultsEventIds contribute. Then we recompute team totals below.
+  // For "real" view: only entries with realResultApplied === true keep their data.
+  // For "hybrid" view: entries in events with actual results that don't have realResultApplied
+  // are cleared so only genuinely applied results contribute to the actual-event portion.
   if (view === "real") {
-    const realSet = new Set(realResultsEventIds);
     meetLineups.forEach((l) => {
-      if (!realSet.has(l.eventId)) {
+      if (!l.realResultApplied) {
         l.place = null;
         l.points = null;
         l.finalTime = null;
@@ -129,7 +136,24 @@ export function getComputedMeetView(
       }
     });
     relayEntries.forEach((r) => {
-      if (!realSet.has(r.eventId)) {
+      if (!r.realResultApplied) {
+        r.place = null;
+        r.points = null;
+        r.finalTime = null;
+        r.finalTimeSeconds = null;
+      }
+    });
+  } else if (view === "hybrid") {
+    meetLineups.forEach((l) => {
+      if (eventsWithActual.has(l.eventId) && !l.realResultApplied) {
+        l.place = null;
+        l.points = null;
+        l.finalTime = null;
+        l.finalTimeSeconds = null;
+      }
+    });
+    relayEntries.forEach((r) => {
+      if (eventsWithActual.has(r.eventId) && !r.realResultApplied) {
         r.place = null;
         r.points = null;
         r.finalTime = null;

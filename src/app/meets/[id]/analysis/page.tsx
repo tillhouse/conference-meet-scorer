@@ -154,7 +154,7 @@ export default async function MeetAnalysisPage({
         <BackToMeetButton meetId={id} />
       </div>
 
-      <MeetNavigation meetId={id} status={meet.status} />
+      <MeetNavigation meetId={id} status={meet.status} scoringMode={meet.scoringMode} />
 
       {!hasResults ? (
         <Card>

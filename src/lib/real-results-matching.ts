@@ -52,6 +52,7 @@ export function buildSchoolToTeamIdMap(meetTeams: MeetTeamForMatch[]): Map<strin
     columbia: "columbia",
     cubc: "columbia",
     cornell: "cornell",
+    corn: "cornell",
     coru: "cornell",
     brow: "brown",
   };
@@ -68,13 +69,18 @@ export function buildSchoolToTeamIdMap(meetTeams: MeetTeamForMatch[]): Map<strin
   return map;
 }
 
+/** Strip trailing middle initial (single letter, optionally with period) from a first name. */
+function stripMiddleInitial(firstName: string): string {
+  return firstName.replace(/\s+[A-Za-z]\.?\s*$/, "").trim();
+}
+
 /** Normalize "LastName, FirstName" or "FirstName LastName" to { firstName, lastName }. */
 export function normalizeParsedName(parsedName: string): { firstName: string; lastName: string } {
   const s = parsedName.replace(/\s+/g, " ").trim();
   const comma = s.indexOf(",");
   if (comma >= 0) {
     const lastName = s.slice(0, comma).trim();
-    const firstName = s.slice(comma + 1).trim();
+    const firstName = stripMiddleInitial(s.slice(comma + 1).trim());
     return { firstName: firstName || "", lastName: lastName || "" };
   }
   const parts = s.split(/\s+/);
@@ -115,13 +121,58 @@ const NICKNAME_MAP: Record<string, string[]> = {
   benjamin: ["ben"],
   joe: ["joseph"],
   joseph: ["joe"],
+  josh: ["joshua"],
+  joshua: ["josh"],
   tom: ["thomas"],
   thomas: ["tom"],
   steve: ["steven", "stephen"],
   steven: ["steve"],
   stephen: ["steve"],
+  will: ["william"],
+  william: ["will", "bill", "billy"],
+  bill: ["william"],
+  billy: ["william"],
+  rob: ["robert"],
+  bob: ["robert"],
+  bobby: ["robert"],
+  robert: ["rob", "bob", "bobby"],
+  jim: ["james"],
+  jimmy: ["james"],
+  james: ["jim", "jimmy"],
+  ed: ["edward", "edwin", "eddie"],
+  eddie: ["edward", "edwin", "ed"],
+  edward: ["ed", "eddie"],
+  edwin: ["ed", "eddie"],
+  jon: ["jonathan", "johnathan"],
+  jonathan: ["jon", "john"],
+  johnathan: ["jon", "john"],
+  john: ["jonathan", "johnathan", "jon"],
+  andy: ["andrew"],
+  andrew: ["andy", "drew"],
+  drew: ["andrew"],
+  dave: ["david"],
+  david: ["dave"],
+  max: ["maximilian", "maxwell"],
+  maximilian: ["max"],
+  maxwell: ["max"],
+  pat: ["patrick", "patricia"],
+  patrick: ["pat"],
+  patricia: ["pat"],
+  charlie: ["charles"],
+  charles: ["charlie", "chuck"],
+  chuck: ["charles"],
+  zach: ["zachary"],
+  zachary: ["zach", "zack"],
+  zack: ["zachary"],
+  nate: ["nathan", "nathaniel"],
+  nathan: ["nate"],
+  nathaniel: ["nate"],
+  tony: ["anthony"],
+  anthony: ["tony"],
+  gabe: ["gabriel"],
+  gabriel: ["gabe"],
   beth: ["elizabeth"],
-  elizabeth: ["beth"],
+  elizabeth: ["beth", "liz"],
   liz: ["elizabeth"],
   kate: ["katherine", "katelyn"],
   katherine: ["kate"],
@@ -132,6 +183,21 @@ const NICKNAME_MAP: Record<string, string[]> = {
 
 function normalizeForCompare(s: string): string {
   return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function editDistance(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return Math.abs(m - n);
+  const prev = Array.from({ length: n + 1 }, (_, j) => j);
+  const curr = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      curr[j] = a[i - 1] === b[j - 1] ? prev[j - 1] : 1 + Math.min(prev[j - 1], prev[j], curr[j - 1]);
+    }
+    for (let j = 0; j <= n; j++) prev[j] = curr[j];
+  }
+  return prev[n];
 }
 /** Normalize class year for comparison: "FR", "SO", "JR", "SR", "GR" (case-insensitive). */
 function normalizeYear(year: string | null | undefined): string | null {
@@ -223,9 +289,7 @@ export function matchAthleteByName(
   };
 
   if (exactMatches.length === 1) {
-    const only = exactMatches[0]!;
-    if (!requireYearForSingle(only)) return { kind: "none" };
-    return { kind: "match", athlete: only };
+    return { kind: "match", athlete: exactMatches[0]! };
   }
   if (exactMatches.length > 1) {
     const byYear = filterByYear(exactMatches);
@@ -242,16 +306,59 @@ export function matchAthleteByName(
     if (byYear.length === 1) return { kind: "match", athlete: byYear[0]! };
     return { kind: "candidates", athletes: initialMatches };
   }
+
+  // Last-name + year fallback: when first name doesn't match (e.g., different name in DB),
+  // try matching by last name alone, disambiguating by class year.
+  const lastNameMatches = athletes.filter((a) => normalizeForCompare(a.lastName) === pLastN);
+  if (lastNameMatches.length === 1) {
+    return { kind: "match", athlete: lastNameMatches[0]! };
+  }
+  if (lastNameMatches.length > 1) {
+    const byYear = filterByYear(lastNameMatches);
+    if (byYear.length === 1) return { kind: "match", athlete: byYear[0]! };
+    return { kind: "candidates", athletes: lastNameMatches };
+  }
+
+  // Fuzzy last-name fallback: handle typos (e.g., "Anagnoson" vs "Anagnason")
+  if (pLastN.length >= 3) {
+    const fuzzyMatches = athletes.filter((a) => editDistance(normalizeForCompare(a.lastName), pLastN) <= 1);
+    if (fuzzyMatches.length === 1) {
+      return { kind: "match", athlete: fuzzyMatches[0]! };
+    }
+    if (fuzzyMatches.length > 1) {
+      const byYear = filterByYear(fuzzyMatches);
+      if (byYear.length === 1) return { kind: "match", athlete: byYear[0]! };
+    }
+  }
+
   return { kind: "none" };
 }
 
 /**
  * Resolve school label from result text to teamId using the meet's team map.
+ * Handles common swimming result formats where teams include an LSC/state suffix
+ * (e.g., "Yale-CT", "Princeton-NJ", "HARV-NE", "Penn-MA").
  */
 export function resolveSchoolToTeamId(
   schoolLabel: string,
   schoolToTeamId: Map<string, string>
 ): string | null {
   const key = schoolLabel.trim().toLowerCase().replace(/\s+/g, " ");
-  return schoolToTeamId.get(key) || null;
+
+  // 1. Exact match
+  if (schoolToTeamId.has(key)) return schoolToTeamId.get(key)!;
+
+  // 2. Strip LSC/state suffix (e.g., "yale-ct" → "yale", "harv-ne" → "harv")
+  const withoutSuffix = key.replace(/-[a-z]{2,3}$/i, "");
+  if (withoutSuffix !== key && schoolToTeamId.has(withoutSuffix)) {
+    return schoolToTeamId.get(withoutSuffix)!;
+  }
+
+  // 3. Try first token before any hyphen or space
+  const firstToken = key.split(/[-\s]/)[0];
+  if (firstToken && firstToken !== key && firstToken !== withoutSuffix && schoolToTeamId.has(firstToken)) {
+    return schoolToTeamId.get(firstToken)!;
+  }
+
+  return null;
 }

@@ -173,6 +173,7 @@ export async function POST(
           finalTimeSeconds: timeSeconds,
           place: row.place,
           points,
+          realResultApplied: true,
         },
       });
     } else {
@@ -183,6 +184,7 @@ export async function POST(
           finalTimeSeconds: timeSeconds,
           place: row.place,
           points,
+          realResultApplied: true,
         },
       });
     }

@@ -1,0 +1,47 @@
+ Event 1  Men 200 Yard Medley Relay
+==================================================================================
+     Ivy Meet: * 1:23.79  2023      , Harvard
+    PRIN Pool: % 1:24.06  2022      HARVARD, HARVARD
+                 1:23.61  D1Q
+                 1:23.85  D1P 2025-2026
+    School                           Seed     Finals       Points 
+==================================================================================
+  1 Yale-CT  'A'                  1:24.86    1:23.55*        64  
+     1) Brown, Lucius JR              2) r:0.23 Hazlett, Alexander SR 
+     3) r:0.77 Finch, Nicholas FR     4) r:0.20 Nankov, Deniel JR     
+    r:+0.50  21.68        44.97 (23.29)
+        1:04.82 (19.85)     1:23.55 (18.73)
+  2 Princeton-NJ  'A'             1:24.70    1:24.35         56  
+     1) Zhang, Yanning JR             2) r:0.18 Zou, Andrew SO        
+     3) r:0.21 Noguchi, Logan SO      4) r:0.08 Dinu, Patrick SO      
+    r:+0.53  21.54        45.67 (24.13)
+        1:05.74 (20.07)     1:24.35 (18.61)
+  3 Columbia  'A'                 1:26.28    1:25.33         54  
+     1) Beers, Isaac K SR             2) r:0.24 Corn, Joshua JR       
+     3) r:0.27 Lee, Brian SR          4) r:0.25 James, Zion SR        
+    r:+0.47  21.48        45.61 (24.13)
+        1:06.62 (21.01)     1:25.33 (18.71)
+  4 HARV-NE  'A'                  1:25.63    1:25.47         52  
+     1) Gattnar, Marre S SO           2) r:0.16 Chen, Joshua SO       
+     3) r:0.20 Wang, Sonny JR         4) r:0.16 Miknic, Maro FR       
+    r:+0.51  21.53        45.32 (23.79)
+        1:05.83 (20.51)     1:25.47 (19.64)
+  5 CORN  'A'                     1:26.52    1:25.75         50  
+     1) Ubertalli, Pietro SR          2) r:0.23 Xu, Haihan JR         
+     3) r:0.24 Simoes, Daniel SR      4) r:0.03 Toothman, Josh SO     
+    r:+0.55  21.62        45.68 (24.06)
+        1:06.69 (21.01)     1:25.75 (19.06)
+  6 Penn-MA  'A'                  1:26.94    1:26.52         48  
+     1) Jin, Eddie S SO               2) r:0.13 Nguyen, Watson SO     
+     3) r:0.11 Campbell, Liam JR      4) r:0.31 Hill, Xavier SR       
+    r:+0.53  22.47        45.60 (23.13)
+        1:06.82 (21.22)     1:26.52 (19.70)
+  7 Dartmouth-NE  'A'             1:26.75    1:26.61         46  
+     1) Chou, Andrew FR               2) r:0.10 Kushnirsky, David FR  
+     3) r:0.08 Turner, Jacob SO       4) r:0.31 McClelland, William JR
+    r:+0.54  21.58        46.22 (24.64)
+        1:06.93 (20.71)     1:26.61 (19.68)
+  8 BROW  'A'                     1:28.26    1:27.80         44  
+     1) Quested, Finn J JR            2) r:0.21 Moore, Max SO         
+     3) r:0.41 Jeng, Donavan JR       4) r:0.14 Gim, Jonathan JR      
+    r:+0.53  22.47        47.01 (24.54)

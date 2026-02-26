@@ -67,6 +67,8 @@ interface TeamStandingsProps {
   relayEntries?: RelayEntry[];
   durationDays?: number;
   eventDays?: Record<string, number> | null;
+  projectedMeetTeams?: MeetTeam[];
+  scoringMode?: string | null;
 }
 
 type SortColumn = 
@@ -75,6 +77,7 @@ type SortColumn =
   | "relays" 
   | "diving" 
   | "total"
+  | "delta"
   | "swimmers"
   | "divers"
   | "ptsPerSwim"
@@ -87,8 +90,19 @@ type SortDirection = "asc" | "desc";
 type ViewMode = "standard" | "advanced" | "dailyGrid";
 type DailyGridSubView = "subScore" | "cumulative";
 
-export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null }: TeamStandingsProps) {
+export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null, projectedMeetTeams, scoringMode }: TeamStandingsProps) {
   const router = useRouter();
+  const showDelta = (scoringMode === "real" || scoringMode === "hybrid") && projectedMeetTeams != null && projectedMeetTeams.length > 0;
+  const projectedByTeamId = useMemo(() => {
+    const map = new Map<string, number>();
+    projectedMeetTeams?.forEach((mt) => map.set(mt.teamId, mt.totalScore));
+    return map;
+  }, [projectedMeetTeams]);
+  const getDelta = (teamId: string, currentTotal: number): number | null => {
+    const projected = projectedByTeamId.get(teamId);
+    if (projected == null) return null;
+    return currentTotal - projected;
+  };
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [sortColumn, setSortColumn] = useState<SortColumn>("total");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
@@ -280,6 +294,9 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
       } else if (sortColumn === "total") {
         aValue = a.totalScore;
         bValue = b.totalScore;
+      } else if (sortColumn === "delta") {
+        aValue = getDelta(a.teamId, a.totalScore) ?? 0;
+        bValue = getDelta(b.teamId, b.totalScore) ?? 0;
       } else if (
         sortColumn === "day-1" ||
         sortColumn === "day-2" ||
@@ -525,13 +542,14 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
         ) : viewMode === "standard" ? (
           // Standard View
           <div className="space-y-0">
-            <div className="grid gap-2 border-b pb-1.5" style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}>
+            <div className="grid gap-2 border-b pb-1.5" style={{ gridTemplateColumns: `40px 1fr repeat(${showDelta ? 6 : 5}, minmax(0, 1fr))` }}>
               <div className="font-semibold text-xs text-slate-600">Rank</div>
               {renderSortableHeader("Team", "team", "left")}
               {renderSortableHeader("Individual", "individual", "right")}
               {renderSortableHeader("Relays", "relays", "right")}
               {renderSortableHeader("Diving", "diving", "right")}
               {renderSortableHeader("Total", "total", "right")}
+              {showDelta && renderSortableHeader("vs Proj.", "delta", "right")}
               <div className="font-semibold text-xs text-slate-600 text-right">Points Behind</div>
             </div>
             {sortedTeams.map((meetTeam, index) => {
@@ -581,11 +599,13 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
               const sensVariantAthleteId = meetTeam.sensitivityVariantAthleteId ?? sensAthleteIds[0] ?? null;
               const activeSensResult = getActiveSensResult(meetTeam);
 
+              const delta = showDelta ? getDelta(meetTeam.teamId, displayedTotal) : null;
+
               return (
                 <div
                   key={meetTeam.id}
                   className="grid gap-2 items-center py-2 border-b last:border-0 hover:bg-slate-50 transition-colors"
-                  style={{ gridTemplateColumns: "40px 1fr repeat(5, minmax(0, 1fr))" }}
+                  style={{ gridTemplateColumns: `40px 1fr repeat(${showDelta ? 6 : 5}, minmax(0, 1fr))` }}
                 >
                   <div className="font-bold text-sm">{index + 1}</div>
                   <div className="min-w-0">
@@ -734,6 +754,11 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                   <div className="text-right font-bold text-sm">
                     {displayedTotal.toFixed(1)}
                   </div>
+                  {showDelta && (
+                    <div className={`text-right font-semibold text-sm ${delta != null && delta > 0 ? "text-green-600" : delta != null && delta < 0 ? "text-red-600" : "text-slate-400"}`}>
+                      {delta == null ? "--" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+                    </div>
+                  )}
                   <div className="text-right font-medium text-sm text-slate-600">
                     {pointsBehind === null ? "-" : pointsBehind.toFixed(1)}
                   </div>

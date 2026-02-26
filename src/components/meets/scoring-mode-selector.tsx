@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ interface ScoringModeSelectorProps {
 }
 
 export function ScoringModeSelector({ meetId, value }: ScoringModeSelectorProps) {
+  const router = useRouter();
   const [mode, setMode] = useState<ScoringMode>((value as ScoringMode) || "simulated");
 
   const handleChange = async (newMode: ScoringMode) => {
@@ -34,20 +36,48 @@ export function ScoringModeSelector({ meetId, value }: ScoringModeSelectorProps)
       setMode(newMode);
       toast.success("Scoring mode updated");
       window.dispatchEvent(new Event("meet-scoring-mode-updated"));
+      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update scoring mode");
     }
   };
 
+  const labels: Record<ScoringMode, string> = {
+    simulated: "Projected",
+    real: "Actual",
+    hybrid: "Combined",
+  };
+
   return (
     <Select value={mode} onValueChange={(v) => handleChange(v as ScoringMode)}>
-      <SelectTrigger className="w-[260px]">
-        <SelectValue placeholder="Scoring mode" />
+      <SelectTrigger className="w-[160px]">
+        <SelectValue>{labels[mode]}</SelectValue>
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="simulated">Simulate from seed times</SelectItem>
-        <SelectItem value="real">Score real results</SelectItem>
-        <SelectItem value="hybrid">Hybrid (real + simulated)</SelectItem>
+        <SelectItem value="simulated">
+          <div>
+            <div>Projected</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Based on athletes&apos; seed times
+            </div>
+          </div>
+        </SelectItem>
+        <SelectItem value="real">
+          <div>
+            <div>Actual</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Scored from officially entered results
+            </div>
+          </div>
+        </SelectItem>
+        <SelectItem value="hybrid">
+          <div>
+            <div>Combined</div>
+            <div className="text-xs text-muted-foreground font-normal">
+              Actual where available, projected otherwise
+            </div>
+          </div>
+        </SelectItem>
       </SelectContent>
     </Select>
   );

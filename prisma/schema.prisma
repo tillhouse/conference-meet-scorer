@@ -322,6 +322,12 @@ model MeetTeam {
   divingScore     Float @default(0)
   totalScore      Float @default(0)
 
+  // Simulated-from-seed scores (separate from real results)
+  simulatedIndividualScore Float @default(0)
+  simulatedRelayScore      Float @default(0)
+  simulatedDivingScore     Float @default(0)
+  simulatedTotalScore      Float @default(0)
+
   meet Meet @relation(fields: [meetId], references: [id], onDelete: Cascade)
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
@@ -350,11 +356,18 @@ model MeetLineup {
   finalTimeSeconds Float?
   place           Int?
   points          Float?
+  realResultApplied Boolean @default(false)
   // Sensitivity: better/worse scenario place and points (only for team's sensitivity athlete)
   sensitivityPlaceBetter  Int?
   sensitivityPointsBetter Float?
   sensitivityPlaceWorse   Int?
   sensitivityPointsWorse  Float?
+
+  // Simulated-from-seed result (separate from real; never overwritten by apply)
+  simulatedPlace           Int?
+  simulatedPoints          Float?
+  simulatedTime            String?
+  simulatedTimeSeconds     Float?
 
   // Parsed splits from real results (Hytek): reactionTimeSeconds, cumulativeSplits, subSplits
   splitsData String?
@@ -389,7 +402,15 @@ model RelayEntry {
   finalTimeSeconds Float?
   place           Int?
   points          Float?
-  
+  // True only when finalTime/place/points were set by Apply results (not by simulation)
+  realResultApplied Boolean @default(false)
+
+  // Simulated-from-seed result (separate from real; never overwritten by apply)
+  simulatedPlace           Int?
+  simulatedPoints          Float?
+  simulatedTime            String?
+  simulatedTimeSeconds     Float?
+
   // Relay members (JSON array of athlete IDs)
   members String? // JSON: ["athleteId1", "athleteId2", "athleteId3", "athleteId4"]
   

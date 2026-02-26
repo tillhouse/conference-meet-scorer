@@ -28,6 +28,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { SplitsDetailView, type IndividualSplitsData, type RelaySplitsData } from "@/components/meets/splits-detail-view";
 
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 interface MeetTeamSensitivity {
   teamId: string;
   sensitivityVariantAthleteId?: string | null;
@@ -133,6 +139,14 @@ interface EventDetailViewProps {
   meetTeams?: MeetTeamSensitivity[];
   /** When true, hide edit toolbar and re-run simulation (e.g. public view-only share) */
   readOnly?: boolean;
+  /** When true, this event has applied real results; show only entries with finalTime (exclude seed-only) */
+  eventHasRealResults?: boolean;
+  /** When true, meet is in real/hybrid mode; if event has no applied results, show empty (no seed times) */
+  realResultsMode?: boolean;
+  /** Projected data per athlete for this event (for vs-projection columns) */
+  projectedLineups?: { athleteId: string; simulatedPlace: number | null; simulatedPoints: number | null }[];
+  /** Projected data per relay for this event (for vs-projection columns) */
+  projectedRelays?: { teamId: string; simulatedPlace: number | null; simulatedPoints: number | null }[];
 }
 
 interface TeamEventStats {
@@ -181,7 +195,23 @@ export function EventDetailView({
   testSpotAthleteIds = [],
   meetTeams = [],
   readOnly = false,
+  eventHasRealResults = false,
+  realResultsMode = false,
+  projectedLineups,
+  projectedRelays,
 }: EventDetailViewProps) {
+  const showProjection = (projectedLineups != null && projectedLineups.length > 0) || (projectedRelays != null && projectedRelays.length > 0);
+  const projByAthleteId = useMemo(() => {
+    const m = new Map<string, { simulatedPlace: number | null; simulatedPoints: number | null }>();
+    projectedLineups?.forEach((p) => m.set(p.athleteId, p));
+    return m;
+  }, [projectedLineups]);
+  const projByTeamId = useMemo(() => {
+    const m = new Map<string, { simulatedPlace: number | null; simulatedPoints: number | null }>();
+    projectedRelays?.forEach((p) => m.set(p.teamId, p));
+    return m;
+  }, [projectedRelays]);
+  const totalCols = showProjection ? 8 : 6;
   const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
   const meetTeamsByTeamId = useMemo(() => {
     const m = new Map<string, MeetTeamSensitivity>();
@@ -303,9 +333,17 @@ export function EventDetailView({
     });
 
     // Only show entries that have some time data (final, override, or seed); hide "ghost" lineups left after clear
-    const lineupsWithTime = meetLineups.filter(
-      (l) => l.finalTime != null || l.overrideTime != null || l.seedTime != null
-    );
+    // In real/hybrid mode: only show entries that came from Apply results (realResultApplied), not from simulation.
+    const lineupsWithTime =
+      realResultsMode
+        ? (eventHasRealResults
+            ? meetLineups.filter(
+                (l) => l.finalTime != null && (l as { realResultApplied?: boolean }).realResultApplied === true
+              )
+            : [])
+        : meetLineups.filter(
+            (l) => l.finalTime != null || l.overrideTime != null || l.seedTime != null
+          );
 
     // Sort lineups: when stored place exists, sort by place then time so applied results keep correct order; else by time only
     const sortedLineups = [...lineupsWithTime].sort((a, b) => {
@@ -444,7 +482,7 @@ export function EventDetailView({
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, event.id, event.name, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, getEffectiveTimeSeconds, sameFinalTier, meetTeamsByTeamId]);
+  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, event.id, event.name, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, getEffectiveTimeSeconds, sameFinalTier, meetTeamsByTeamId, eventHasRealResults, realResultsMode]);
 
   // Process relay entries if this is a relay event
   const relayTeamStats = useMemo(() => {
@@ -467,9 +505,16 @@ export function EventDetailView({
       });
     });
 
-    const relaysWithTime = relayEntries.filter(
-      (r) => r.finalTime != null || r.overrideTime != null || r.seedTime != null
-    );
+    const relaysWithTime =
+      realResultsMode
+        ? (eventHasRealResults
+            ? relayEntries.filter(
+                (r) => r.finalTime != null && (r as { realResultApplied?: boolean }).realResultApplied === true
+              )
+            : [])
+        : relayEntries.filter(
+            (r) => r.finalTime != null || r.overrideTime != null || r.seedTime != null
+          );
 
     // Sort: by place (non-null first so DQ go last), then by time
     const sortedRelays = [...relaysWithTime].sort((a, b) => {
@@ -563,7 +608,7 @@ export function EventDetailView({
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [relayEntries, teams, relayScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, sameFinalTier]);
+  }, [relayEntries, teams, relayScoring, scoringPlaces, event.eventType, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, sameFinalTier, eventHasRealResults, realResultsMode]);
 
   const displayStats = event.eventType === "relay" ? relayTeamStats : teamStats;
 
@@ -742,6 +787,30 @@ export function EventDetailView({
     );
   }, [isEditMode, editingTimes, handleTimeChange]);
 
+  const renderProjectionCells = (entry: { realAthleteId?: string | null; lineupId?: string | null; points: number }) => {
+    if (!showProjection) return null;
+    let proj: { simulatedPlace: number | null; simulatedPoints: number | null } | undefined;
+    if (event.eventType === "relay") {
+      const relay = relayEntries.find((r) => r.id === entry.lineupId);
+      if (relay) proj = projByTeamId.get(relay.teamId);
+    } else if (entry.realAthleteId) {
+      proj = projByAthleteId.get(entry.realAthleteId);
+    }
+    const projPlace = proj?.simulatedPlace;
+    const projPoints = proj?.simulatedPoints ?? 0;
+    const delta = proj != null ? entry.points - projPoints : null;
+    return (
+      <>
+        <TableCell className="w-[4.5rem] text-right text-xs text-slate-500">
+          {projPlace != null ? ordinal(projPlace) : "--"}
+        </TableCell>
+        <TableCell className={`w-[5rem] text-right text-xs font-semibold ${delta != null && delta > 0 ? "text-green-600" : delta != null && delta < 0 ? "text-red-600" : "text-slate-400"}`}>
+          {delta == null ? "--" : `${delta > 0 ? "+" : ""}${delta.toFixed(1)}`}
+        </TableCell>
+      </>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="results" className="w-full">
@@ -862,6 +931,8 @@ export function EventDetailView({
                       <col />
                       <col className="w-[7.5rem]" />
                       <col className="w-[6rem]" />
+                      {showProjection && <col className="w-[4.5rem]" />}
+                      {showProjection && <col className="w-[5rem]" />}
                     </colgroup>
                     <TableHeader>
                       <TableRow>
@@ -871,6 +942,8 @@ export function EventDetailView({
                         <TableHead className="pr-8 text-xs font-semibold text-slate-600 uppercase tracking-wide">Team</TableHead>
                         <TableHead className="w-[7.5rem] text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">{event.eventType === "diving" ? "Score" : "Time"}</TableHead>
                         <TableHead className="w-[6rem] pl-5 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Points</TableHead>
+                        {showProjection && <TableHead className="w-[4.5rem] text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Proj.</TableHead>}
+                        {showProjection && <TableHead className="w-[5rem] text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">+/−</TableHead>}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -898,7 +971,7 @@ export function EventDetailView({
                             {aFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-700 hover:bg-slate-700">
-                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={totalCols} className="text-white font-semibold py-2">
                                     A Final (Places {aFinalRange.min}-{aFinalRange.max})
                                   </TableCell>
                                 </TableRow>
@@ -976,10 +1049,11 @@ export function EventDetailView({
                                         <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">
                                           {entry.points > 0 ? entry.points.toFixed(1) : "-"}
                                         </TableCell>
+                                        {renderProjectionCells(entry)}
                                       </TableRow>
                                       {isExpanded && hasSplits && splitsPayload && (
                                         <TableRow key={`a-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
-                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionId}>
+                                          <TableCell colSpan={totalCols} className="p-4 align-top border-l-4 border-slate-200" id={expansionId}>
                                             <SplitsDetailView
                                               type={splitsPayload.type}
                                               title={splitsPayload.title}
@@ -1008,6 +1082,8 @@ export function EventDetailView({
                                               {split.time ? normalizeTimeFormat(split.time) : "—"}
                                             </TableCell>
                                             <TableCell className="w-[6rem] pl-5" />
+                                            {showProjection && <TableCell />}
+                                            {showProjection && <TableCell />}
                                           </TableRow>
                                         ))}
                                     </Fragment>
@@ -1020,7 +1096,7 @@ export function EventDetailView({
                             {bFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-600 hover:bg-slate-600">
-                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={totalCols} className="text-white font-semibold py-2">
                                     B Final (Places {bFinalRange.min}-{bFinalRange.max})
                                   </TableCell>
                                 </TableRow>
@@ -1076,10 +1152,11 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                        {renderProjectionCells(entry)}
                                       </TableRow>
                                       {isExpanded && hasSplitsB && splitsPayloadB && (
                                         <TableRow key={`b-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
-                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdB}>
+                                          <TableCell colSpan={totalCols} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdB}>
                                             <SplitsDetailView
                                               type={splitsPayloadB.type}
                                               title={splitsPayloadB.title}
@@ -1100,6 +1177,8 @@ export function EventDetailView({
                                           <TableCell />
                                           <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
                                           <TableCell className="w-[6rem] pl-5" />
+                                          {showProjection && <TableCell />}
+                                          {showProjection && <TableCell />}
                                         </TableRow>
                                       ))}
                                     </Fragment>
@@ -1112,7 +1191,7 @@ export function EventDetailView({
                             {cFinalEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-500 hover:bg-slate-500">
-                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={totalCols} className="text-white font-semibold py-2">
                                     C Final (Places {cFinalRange.min}-{cFinalRange.max})
                                   </TableCell>
                                 </TableRow>
@@ -1168,10 +1247,11 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="w-[6rem] text-right font-semibold text-green-600 pl-5">{entry.points > 0 ? entry.points.toFixed(1) : "-"}</TableCell>
+                                        {renderProjectionCells(entry)}
                                       </TableRow>
                                       {isExpanded && hasSplitsC && splitsPayloadC && (
                                         <TableRow key={`c-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
-                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdC}>
+                                          <TableCell colSpan={totalCols} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdC}>
                                             <SplitsDetailView
                                               type={splitsPayloadC.type}
                                               title={splitsPayloadC.title}
@@ -1192,6 +1272,8 @@ export function EventDetailView({
                                           <TableCell />
                                           <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
                                           <TableCell className="w-[6rem] pl-5" />
+                                          {showProjection && <TableCell />}
+                                          {showProjection && <TableCell />}
                                         </TableRow>
                                       ))}
                                     </Fragment>
@@ -1204,7 +1286,7 @@ export function EventDetailView({
                             {nonScorerEntries.length > 0 && (
                               <>
                                 <TableRow className="bg-slate-400 hover:bg-slate-400">
-                                  <TableCell colSpan={6} className="text-white font-semibold py-2">
+                                  <TableCell colSpan={totalCols} className="text-white font-semibold py-2">
                                     Non-Scorers (Places {cFinalRange.max + 1}+)
                                   </TableCell>
                                 </TableRow>
@@ -1260,10 +1342,11 @@ export function EventDetailView({
                                           </span>
                                         </TableCell>
                                         <TableCell className="w-[6rem] text-right font-semibold text-slate-400 pl-5">-</TableCell>
+                                        {renderProjectionCells(entry)}
                                       </TableRow>
                                       {isExpanded && hasSplitsN && splitsPayloadN && (
                                         <TableRow key={`nonscorer-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-slate-50/90" : "bg-white/90"}>
-                                          <TableCell colSpan={6} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdN}>
+                                          <TableCell colSpan={totalCols} className="p-4 align-top border-l-4 border-slate-200" id={expansionIdN}>
                                             <SplitsDetailView
                                               type={splitsPayloadN.type}
                                               title={splitsPayloadN.title}
@@ -1284,6 +1367,8 @@ export function EventDetailView({
                                           <TableCell />
                                           <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
                                           <TableCell className="w-[6rem] pl-5" />
+                                          {showProjection && <TableCell />}
+                                          {showProjection && <TableCell />}
                                         </TableRow>
                                       ))}
                                     </Fragment>
@@ -1412,7 +1497,7 @@ export function EventDetailView({
                   <TableBody>
                     {displayStats.length === 0 || displayStats.every((s) => s.entries.length === 0) ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="text-center py-8 text-slate-500">
+                        <TableCell colSpan={totalCols} className="text-center py-8 text-slate-500">
                           No entries in this event.
                         </TableCell>
                       </TableRow>

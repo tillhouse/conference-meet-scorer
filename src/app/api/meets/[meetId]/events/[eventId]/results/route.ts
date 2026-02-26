@@ -223,14 +223,6 @@ export async function POST(
         }
         const timeSeconds = row.timeStr === "DQ" || row.timeStr === "XDQ" ? null : parseTimeToSeconds(row.timeStr);
 
-        const splitsData =
-          row.legs != null || row.relayCumulativeAt50 != null
-            ? JSON.stringify({
-                legs: row.legs ?? undefined,
-                relayCumulativeAt50: row.relayCumulativeAt50 ?? undefined,
-              })
-            : null;
-
         // If parsed relay has leg names, match to team athletes and set members
         let membersJson: string | undefined;
         if (row.legs != null && row.legs.length > 0) {
@@ -251,10 +243,32 @@ export async function POST(
               memberIds.push(null);
               continue;
             }
-            const match = matchAthleteByName(leg.name, athletesForMatch, null);
+            const match = matchAthleteByName(leg.name, athletesForMatch, leg.year ?? null);
             memberIds.push(match.kind === "match" ? match.athlete.id : null);
           }
           membersJson = JSON.stringify(memberIds);
+        }
+
+        // Build splitsData and legTimes from parsed leg data
+        let splitsDataJson: string | undefined;
+        let legTimesJson: string | undefined;
+        if (row.legs && row.legs.length > 0) {
+          const splitsData = {
+            legs: row.legs.map((leg) => ({
+              reactionTimeSeconds: leg.reactionTimeSeconds,
+              name: leg.name,
+              cumulativeLeg: leg.cumulativeLeg,
+              subSplits: leg.subSplits,
+            })),
+            relayCumulativeAt50: row.relayCumulativeAt50 ?? [],
+          };
+          splitsDataJson = JSON.stringify(splitsData);
+          legTimesJson = JSON.stringify(
+            row.legs.map((leg) => {
+              const cumArr = leg.cumulativeLeg;
+              return cumArr.length > 0 ? cumArr[cumArr.length - 1] : null;
+            })
+          );
         }
 
         let relay = await prisma.relayEntry.findUnique({
@@ -272,8 +286,10 @@ export async function POST(
               finalTimeSeconds: timeSeconds,
               place: assignedPlace,
               points: assignedPoints,
-              splitsData,
+              realResultApplied: true,
               ...(membersJson != null && { members: membersJson }),
+              ...(splitsDataJson != null && { splitsData: splitsDataJson }),
+              ...(legTimesJson != null && { legTimes: legTimesJson }),
             },
           });
         } else {
@@ -284,8 +300,10 @@ export async function POST(
               finalTimeSeconds: timeSeconds,
               place: assignedPlace,
               points: assignedPoints,
-              splitsData,
+              realResultApplied: true,
               ...(membersJson != null && { members: membersJson }),
+              ...(splitsDataJson != null && { splitsData: splitsDataJson }),
+              ...(legTimesJson != null && { legTimes: legTimesJson }),
             },
           });
         }
@@ -425,18 +443,6 @@ export async function POST(
           : (row as IndividualRow).timeStr;
         const timeSeconds = parseTimeToSeconds(timeStr);
 
-        const indRow = row as IndividualRow;
-        const lineupSplitsData =
-          indRow.reactionTimeSeconds != null ||
-          (indRow.cumulativeSplits != null && indRow.cumulativeSplits.length > 0) ||
-          (indRow.subSplits != null && indRow.subSplits.length > 0)
-            ? JSON.stringify({
-                reactionTimeSeconds: indRow.reactionTimeSeconds ?? null,
-                cumulativeSplits: indRow.cumulativeSplits ?? [],
-                subSplits: indRow.subSplits ?? [],
-              })
-            : null;
-
         let lineup = await prisma.meetLineup.findUnique({
           where: {
             meetId_athleteId_eventId: { meetId, athleteId: athleteId!, eventId },
@@ -452,7 +458,7 @@ export async function POST(
               finalTimeSeconds: timeSeconds,
               place: assignedPlace,
               points: assignedPoints,
-              splitsData: lineupSplitsData,
+              realResultApplied: true,
             },
           });
         } else {
@@ -463,7 +469,7 @@ export async function POST(
               finalTimeSeconds: timeSeconds,
               place: assignedPlace,
               points: assignedPoints,
-              splitsData: lineupSplitsData,
+              realResultApplied: true,
             },
           });
         }
@@ -524,7 +530,7 @@ export async function DELETE(
         finalTimeSeconds: null,
         place: null,
         points: null,
-        splitsData: null,
+        realResultApplied: false,
       },
     });
 
@@ -535,21 +541,33 @@ export async function DELETE(
         finalTimeSeconds: null,
         place: null,
         points: null,
-        splitsData: null,
+        realResultApplied: false,
       },
     });
 
+    // Ensure event is in realResultsEventIds so the table shows only finalTime entries (empty after clear).
+    // If the event was never applied (only simulated), it wouldn't be in the list otherwise.
     const meet = await prisma.meet.findUnique({
       where: { id: meetId },
-      select: { realResultsEventIds: true },
+      select: { realResultsEventIds: true, scoringMode: true },
     });
-    if (meet?.realResultsEventIds) {
-      const ids = JSON.parse(meet.realResultsEventIds) as string[];
-      const next = ids.filter((id) => id !== eventId);
-      await prisma.meet.update({
-        where: { id: meetId },
-        data: { realResultsEventIds: JSON.stringify(next) },
-      });
+    if (meet) {
+      let ids: string[] = [];
+      try {
+        ids = meet.realResultsEventIds ? (JSON.parse(meet.realResultsEventIds) as string[]) : [];
+      } catch {
+        ids = [];
+      }
+      if (!ids.includes(eventId)) {
+        ids.push(eventId);
+        await prisma.meet.update({
+          where: { id: meetId },
+          data: {
+            realResultsEventIds: JSON.stringify(ids),
+            ...(meet.scoringMode === "simulated" ? { scoringMode: "hybrid" } : {}),
+          },
+        });
+      }
     }
 
     return NextResponse.json({ success: true });

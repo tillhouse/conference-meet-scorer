@@ -69,7 +69,7 @@ export default async function MeetEventsPage({
       </div>
 
       {/* Navigation */}
-      <MeetNavigation meetId={id} status={meet.status} />
+      <MeetNavigation meetId={id} status={meet.status} scoringMode={meet.scoringMode} />
 
       {/* Events List */}
       <Card>
