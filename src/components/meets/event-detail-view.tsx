@@ -346,15 +346,55 @@ export function EventDetailView({
             (l) => l.finalTime != null || l.overrideTime != null || l.seedTime != null
           );
 
-    // Sort lineups: when stored place exists, sort by place then time so applied results keep correct order; else by time only
-    const sortedLineups = [...lineupsWithTime].sort((a, b) => {
-      const aPlace = a.place ?? Infinity;
-      const bPlace = b.place ?? Infinity;
-      if (aPlace !== bPlace) return aPlace - bPlace;
+    // Use effective place/time: real results (place/finalTime) when present, else simulated (simulatedPlace/simulatedTime).
+    // This fixes display when simulation writes to simulated* only while event-detail-view used place (null).
+    type LineupWithSim = typeof lineupsWithTime[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null };
+    const lineupsWithEffectiveData = lineupsWithTime.map((l) => {
+      const sim = l as LineupWithSim;
+      return {
+        ...l,
+        place: l.place ?? sim.simulatedPlace ?? null,
+        points: l.points ?? sim.simulatedPoints ?? null,
+        finalTime: l.finalTime ?? sim.simulatedTime ?? null,
+        finalTimeSeconds: l.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? null,
+      };
+    });
+
+    // Ensure every team that appears in lineups has a stats entry (defensive: avoid dropping entries if teams prop is missing a team)
+    lineupsWithEffectiveData.forEach((l) => {
+      const teamId = l.athlete?.team?.id;
+      if (teamId && !statsMap.has(teamId)) {
+        const t = l.athlete!.team;
+        statsMap.set(teamId, {
+          teamId,
+          teamName: formatTeamName(t.name ?? "", t.schoolName),
+          teamColor: t.primaryColor ?? null,
+          totalPoints: 0,
+          athleteCount: 0,
+          aFinalCount: 0,
+          bFinalCount: 0,
+          cFinalCount: 0,
+          nonScorerCount: 0,
+          entries: [],
+        });
+      }
+    });
+
+    // Sort lineups: when ALL have stored place, sort by place then time. When ANY have null place (e.g. unmatched
+    // from Apply Real Results or no simulation), sort purely by time so we rank the full field correctly.
+    const hasAnyNullPlace = lineupsWithEffectiveData.some((l) => l.place == null);
+    const sortedLineups = [...lineupsWithEffectiveData].sort((a, b) => {
       const aOverride = 'overrideTimeSeconds' in a ? a.overrideTimeSeconds : null;
       const bOverride = 'overrideTimeSeconds' in b ? b.overrideTimeSeconds : null;
       const aTime = (a.finalTimeSeconds ?? aOverride ?? a.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
       const bTime = (b.finalTimeSeconds ?? bOverride ?? b.seedTimeSeconds) ?? (event.eventType === "diving" ? -Infinity : Infinity);
+      if (hasAnyNullPlace) {
+        if (event.eventType === "diving") return bTime - aTime;
+        return aTime - bTime;
+      }
+      const aPlace = a.place ?? Infinity;
+      const bPlace = b.place ?? Infinity;
+      if (aPlace !== bPlace) return aPlace - bPlace;
       if (event.eventType === "diving") return bTime - aTime;
       return aTime - bTime;
     });
@@ -517,8 +557,21 @@ export function EventDetailView({
             (r) => r.finalTime != null || r.overrideTime != null || r.seedTime != null
           );
 
+    // Use effective place/time: real results when present, else simulated (same fix as individual events)
+    type RelayWithSim = typeof relaysWithTime[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null };
+    const relaysWithEffectiveData = relaysWithTime.map((r) => {
+      const sim = r as RelayWithSim;
+      return {
+        ...r,
+        place: r.place ?? sim.simulatedPlace ?? null,
+        points: r.points ?? sim.simulatedPoints ?? null,
+        finalTime: r.finalTime ?? sim.simulatedTime ?? null,
+        finalTimeSeconds: r.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? null,
+      };
+    });
+
     // Sort: by place (non-null first so DQ go last), then by time
-    const sortedRelays = [...relaysWithTime].sort((a, b) => {
+    const sortedRelays = [...relaysWithEffectiveData].sort((a, b) => {
       const aHasPlace = a.place != null ? 0 : 1;
       const bHasPlace = b.place != null ? 0 : 1;
       if (aHasPlace !== bHasPlace) return aHasPlace - bHasPlace;

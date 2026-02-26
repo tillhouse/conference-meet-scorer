@@ -179,6 +179,23 @@ export default async function EventDetailPage({
     }
   });
 
+  // Build teams list from every team that has an entry in this event (lineups + relays),
+  // so no team is hidden when they have saved lineups but might be missing from meetTeams ordering or subset.
+  type TeamShape = { id: string; name: string; schoolName?: string | null; primaryColor?: string | null };
+  const teamMap = new Map<string, TeamShape>();
+  meet.meetTeams?.forEach((mt) => {
+    if (mt.team) teamMap.set(mt.teamId, mt.team as TeamShape);
+  });
+  meet.meetLineups.forEach((l) => {
+    const t = l.athlete?.team as TeamShape | undefined;
+    if (t?.id && !teamMap.has(t.id)) teamMap.set(t.id, t);
+  });
+  meet.relayEntries.forEach((r) => {
+    const t = r.team as TeamShape | undefined;
+    if (t?.id && !teamMap.has(t.id)) teamMap.set(t.id, t);
+  });
+  const teamsForView = Array.from(teamMap.values());
+
   // For relay events, build athlete id -> name map from all meet lineups (so we can show split names)
   let athleteIdToName: Record<string, string> = {};
   if (event.eventType === "relay") {
@@ -239,7 +256,7 @@ export default async function EventDetailPage({
         event={event}
         meetLineups={meet.meetLineups}
         relayEntries={meet.relayEntries}
-        teams={meet.meetTeams.map((mt) => mt.team)}
+        teams={teamsForView}
         athleteIdToName={athleteIdToName}
         individualScoring={individualScoring}
         relayScoring={relayScoring}
