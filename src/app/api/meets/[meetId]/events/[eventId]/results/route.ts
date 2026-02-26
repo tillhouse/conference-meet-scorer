@@ -58,9 +58,13 @@ async function recomputeMeetTeamScores(meetId: string) {
     const mt = meetTeam as typeof meetTeam & {
       testSpotAthleteIds?: string | null;
       testSpotScoringAthleteId?: string | null;
+      exhibitionAthleteIds?: string | null;
     };
     const testSpotAthleteIds = mt.testSpotAthleteIds
       ? (JSON.parse(mt.testSpotAthleteIds) as string[])
+      : [];
+    const exhibitionAthleteIds = mt.exhibitionAthleteIds
+      ? (JSON.parse(mt.exhibitionAthleteIds) as string[])
       : [];
     let testSpotScoringAthleteId = mt.testSpotScoringAthleteId;
     if (
@@ -72,7 +76,8 @@ async function recomputeMeetTeamScores(meetId: string) {
     const scoringSet = getScoringAthleteIdSet(
       selectedAthletes,
       testSpotAthleteIds,
-      testSpotScoringAthleteId ?? null
+      testSpotScoringAthleteId ?? null,
+      exhibitionAthleteIds
     );
 
     const teamLineups = await prisma.meetLineup.findMany({

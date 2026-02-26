@@ -309,6 +309,9 @@ model MeetTeam {
   testSpotAthleteIds      String? // JSON: ["id1", "id2", "id3"]
   testSpotScoringAthleteId String? // which test-spot athlete's points count
 
+  // Exhibition: athletes who swim but don't count toward metrics (A/B/C counts, pts/entry, team totals)
+  exhibitionAthleteIds   String?  // JSON: ["id1", "id2", ...]
+
   // Sensitivity analysis: up to 3 athletes, X% better/worse scenarios
   sensitivityAthleteIds    String?  // JSON: ["id1", "id2", "id3"] (max 3)
   sensitivityPercent      Float?   // e.g. 1 or 2 (same for all)

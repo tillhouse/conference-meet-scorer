@@ -166,6 +166,32 @@ export function LineupSelector({
           lineups[athleteId] = eventArray;
         }
       });
+
+      // Client-side validation: check event limits before save
+      const allEvents = [...swimmingEvents, ...divingEvents];
+      const overLimit: string[] = [];
+      for (const [athleteId, eventIds] of Object.entries(lineups)) {
+        const athlete = team.athletes.find((a) => a.id === athleteId);
+        if (!athlete) continue;
+        const athleteEventObjs = eventIds
+          .map((eid) => allEvents.find((e) => e.id === eid))
+          .filter((e): e is Event => e != null);
+        const indivCount = athleteEventObjs.filter((e) => e.eventType === "individual").length;
+        const divingCount = athleteEventObjs.filter((e) => e.eventType === "diving").length;
+        if (athlete.isDiver && divingCount > maxDivingEvents) {
+          overLimit.push(`${athlete.firstName} ${athlete.lastName} (${divingCount} diving > ${maxDivingEvents})`);
+        } else if (!athlete.isDiver && indivCount > maxIndivEvents) {
+          overLimit.push(`${athlete.firstName} ${athlete.lastName} (${indivCount} individual > ${maxIndivEvents})`);
+        }
+      }
+      if (overLimit.length > 0) {
+        toast.error(
+          `Event limit exceeded. Reduce events for: ${overLimit.join(", ")}`
+        );
+        setSaving(false);
+        return;
+      }
+
       console.log("Saving lineups:", { lineups, athleteCount: Object.keys(lineups).length });
       console.log("Lineups structure check:", {
         isObject: typeof lineups === 'object',

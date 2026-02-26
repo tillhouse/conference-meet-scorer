@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -13,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle, Users, Beaker, BarChart2 } from "lucide-react";
+import { CheckCircle2, AlertCircle, Users, Beaker, BarChart2, GitMerge } from "lucide-react";
 import { formatName, formatTeamName } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -71,14 +72,27 @@ export function RosterSelector({
   const [includeSensitivity, setIncludeSensitivity] = useState(false);
   const [sensitivityAthleteIds, setSensitivityAthleteIds] = useState<string[]>([]);
   const [sensitivityPercent, setSensitivityPercent] = useState(1);
+  const [exhibitionAthleteIds, setExhibitionAthleteIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [mergingAthleteId, setMergingAthleteId] = useState<string | null>(null);
+  const [mergeTargetByUnknown, setMergeTargetByUnknown] = useState<Record<string, string>>({});
+  const router = useRouter();
 
   // Load existing roster selections
   useEffect(() => {
     fetch(`/api/meets/${meetId}/rosters/${meetTeam.teamId}`)
-      .then((res) => res.json())
-      .then((data) => {
+      .then(async (res) => {
+        const text = await res.text();
+        let data: { athleteIds?: string[]; testSpotAthleteIds?: string[]; testSpotScoringAthleteId?: string | null; exhibitionAthleteIds?: string[]; sensitivityAthleteIds?: string[]; sensitivityPercent?: number } = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          if (!res.ok) {
+            toast.error("Failed to load roster. The server returned an invalid response.");
+          }
+          return;
+        }
         if (data.athleteIds) {
           setSelectedAthletes(new Set(data.athleteIds));
         }
@@ -95,6 +109,11 @@ export function RosterSelector({
           setTestSpotAthleteIds([]);
           setTestSpotScoringAthleteId(null);
         }
+        if (data.exhibitionAthleteIds?.length) {
+          setExhibitionAthleteIds(data.exhibitionAthleteIds);
+        } else {
+          setExhibitionAthleteIds([]);
+        }
         if (data.sensitivityAthleteIds?.length) {
           setIncludeSensitivity(true);
           setSensitivityAthleteIds(data.sensitivityAthleteIds.slice(0, 3));
@@ -106,7 +125,7 @@ export function RosterSelector({
         }
       })
       .catch(() => {
-        // No existing roster, that's fine
+        // No existing roster or network error, that's fine
       });
   }, [meetId, meetTeam.teamId]);
 
@@ -114,6 +133,55 @@ export function RosterSelector({
   const availableAthletes = team.athletes.filter(
     (athlete) => divingIncluded || !athlete.isDiver
   );
+
+  const unknownAthletes = availableAthletes.filter(
+    (a) => a.firstName === "Unknown" || a.lastName === "Unknown"
+  );
+  const mergeableAthletes = availableAthletes.filter((a) => !unknownAthletes.includes(a));
+
+  const handleMerge = async (unknownAthleteId: string) => {
+    const targetId = mergeTargetByUnknown[unknownAthleteId];
+    if (!targetId) {
+      toast.error("Please select which athlete to merge with");
+      return;
+    }
+    setMergingAthleteId(unknownAthleteId);
+    try {
+      const res = await fetch(
+        `/api/meets/${meetId}/rosters/${meetTeam.teamId}/merge`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            unknownAthleteId,
+            targetAthleteId: targetId,
+          }),
+        }
+      );
+      const text = await res.text();
+      let data: { error?: string } = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+      if (!res.ok) {
+        toast.error(data.error || "Failed to merge athlete");
+        return;
+      }
+      toast.success("Athlete merged successfully");
+      setMergeTargetByUnknown((prev) => {
+        const next = { ...prev };
+        delete next[unknownAthleteId];
+        return next;
+      });
+      router.refresh();
+    } catch {
+      toast.error("Failed to merge athlete");
+    } finally {
+      setMergingAthleteId(null);
+    }
+  };
 
   // Calculate current roster count (swimmers + divers × ratio)
   const calculateRosterCount = (selected: Set<string>) => {
@@ -158,6 +226,7 @@ export function RosterSelector({
       }
     } else {
       newSelected.add(athleteId);
+      setExhibitionAthleteIds((prev) => prev.filter((id) => id !== athleteId));
       if (!includeTestSpot) {
         const wouldBeCount = calculateRosterCount(newSelected);
         if (wouldBeCount > maxAthletes) {
@@ -219,12 +288,16 @@ export function RosterSelector({
         athleteIds: string[];
         testSpotAthleteIds?: string[];
         testSpotScoringAthleteId?: string | null;
+        exhibitionAthleteIds?: string[];
         sensitivityAthleteIds?: string[];
         sensitivityPercent?: number;
       } = { athleteIds: Array.from(selectedAthletes) };
       if (includeTestSpot && testSpotAthleteIds.length > 0 && testSpotScoringAthleteId) {
         body.testSpotAthleteIds = testSpotAthleteIds;
         body.testSpotScoringAthleteId = testSpotScoringAthleteId;
+      }
+      if (exhibitionAthleteIds.length > 0) {
+        body.exhibitionAthleteIds = exhibitionAthleteIds.filter((id) => !selectedAthletes.has(id));
       }
       if (includeSensitivity && sensitivityAthleteIds.length > 0) {
         body.sensitivityAthleteIds = sensitivityAthleteIds.filter((id) => selectedAthletes.has(id)).slice(0, SENSITIVITY_MAX);
@@ -240,10 +313,20 @@ export function RosterSelector({
         body: JSON.stringify(body),
       });
 
+      const responseText = await response.text();
       if (!response.ok) {
-        const error = await response.json();
+        let error: { error?: string; details?: unknown } = {};
+        try {
+          error = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          throw new Error(
+            response.status >= 500
+              ? "Server error while saving roster. Please try again."
+              : "Failed to save roster."
+          );
+        }
         const detailsStr = Array.isArray(error.details) && error.details.length > 0
-          ? error.details.map((d: { message?: string }) => d.message).filter(Boolean).join("; ")
+          ? (error.details as { message?: string }[]).map((d) => d.message).filter(Boolean).join("; ")
           : (typeof error.details === "string" ? error.details : "");
         const errorDetails = detailsStr ? `: ${detailsStr}` : "";
         throw new Error((error.error || "Failed to save roster") + errorDetails);
@@ -269,7 +352,13 @@ export function RosterSelector({
         }
       );
       if (!res.ok) {
-        const err = await res.json();
+        const text = await res.text();
+        let err: { error?: string } = {};
+        try {
+          err = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error("Failed to update scoring athlete");
+        }
         throw new Error(err.error || "Failed to update scoring athlete");
       }
       toast.success("Scoring athlete updated");
@@ -452,6 +541,71 @@ export function RosterSelector({
           </div>
         )}
 
+        {/* Unidentified athletes – merge with correct roster entries */}
+        {unknownAthletes.length > 0 && (
+          <div className="p-4 rounded-lg border border-amber-200 bg-amber-50/50 space-y-3">
+            <h4 className="font-semibold mb-2 flex items-center gap-2 text-amber-900">
+              <GitMerge className="h-4 w-4" />
+              Unidentified athletes – merge with correct roster entries
+            </h4>
+            <p className="text-sm text-amber-800">
+              These athletes were added from applied results but could not be matched. Select the correct roster entry to merge them with.
+            </p>
+            <div className="space-y-2">
+              {unknownAthletes.map((unknown) => {
+                const mergeTargets = unknown.isDiver ? divers : swimmers;
+                const targetOptions = mergeTargets.filter((a) => !unknownAthletes.includes(a));
+                return (
+                  <div
+                    key={unknown.id}
+                    className="flex flex-wrap items-center gap-2 p-2 rounded-md bg-white border border-amber-100"
+                  >
+                    <span className="font-medium text-sm">
+                      {formatName(unknown.firstName, unknown.lastName)}
+                      {unknown.year && (
+                        <span className="text-slate-500 ml-1">({unknown.year})</span>
+                      )}
+                    </span>
+                    <span className="text-slate-500 text-sm">→</span>
+                    <Select
+                      value={mergeTargetByUnknown[unknown.id] ?? ""}
+                      onValueChange={(val) =>
+                        setMergeTargetByUnknown((prev) => ({
+                          ...prev,
+                          [unknown.id]: val,
+                        }))
+                      }
+                    >
+                      <SelectTrigger className="w-[220px] bg-white">
+                        <SelectValue placeholder="Merge with..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {targetOptions.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {formatName(a.firstName, a.lastName)}
+                            {a.year && (
+                              <span className="text-slate-500 ml-1">({a.year})</span>
+                            )}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      onClick={() => handleMerge(unknown.id)}
+                      disabled={
+                        mergingAthleteId === unknown.id || !mergeTargetByUnknown[unknown.id]
+                      }
+                    >
+                      {mergingAthleteId === unknown.id ? "Merging..." : "Merge"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Swimmers */}
         <div>
           <h4 className="font-semibold mb-2 flex items-center gap-2">
@@ -511,6 +665,44 @@ export function RosterSelector({
                   </Label>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Exhibition swimmers: net-new additions from athletes not on the main roster */}
+        {availableAthletes.some((a) => !selectedAthletes.has(a.id)) && (
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm">Exhibition swimmers</h4>
+            <p className="text-xs text-slate-600">
+              Add athletes who swim exhibition (not on the main roster). They appear in results at the bottom but are excluded from A/B/C counts, points per entry, and team scores.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 max-h-32 overflow-y-auto border rounded-lg p-3 bg-slate-50/50">
+              {availableAthletes
+                .filter((a) => !selectedAthletes.has(a.id))
+                .map((athlete) => (
+                  <div key={athlete.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`exhibition-${athlete.id}`}
+                      checked={exhibitionAthleteIds.includes(athlete.id)}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setExhibitionAthleteIds((prev) => [...prev, athlete.id]);
+                        } else {
+                          setExhibitionAthleteIds((prev) => prev.filter((id) => id !== athlete.id));
+                        }
+                      }}
+                    />
+                    <Label
+                      htmlFor={`exhibition-${athlete.id}`}
+                      className="text-sm font-normal cursor-pointer flex-1"
+                    >
+                      {formatName(athlete.firstName, athlete.lastName)}
+                      {athlete.year && (
+                        <span className="text-xs text-slate-500 ml-1">({athlete.year})</span>
+                      )}
+                    </Label>
+                  </div>
+                ))}
             </div>
           </div>
         )}

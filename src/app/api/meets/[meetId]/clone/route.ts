@@ -82,6 +82,7 @@ export async function POST(
             selectedAthletes: mt.selectedAthletes,
             testSpotAthleteIds: mt.testSpotAthleteIds,
             testSpotScoringAthleteId: mt.testSpotScoringAthleteId,
+            exhibitionAthleteIds: mt.exhibitionAthleteIds,
             sensitivityAthleteIds: mt.sensitivityAthleteIds,
             sensitivityPercent: mt.sensitivityPercent,
             sensitivityVariant: mt.sensitivityVariant,

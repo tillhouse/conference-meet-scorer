@@ -40,6 +40,7 @@ interface MeetTeamSensitivity {
   sensitivityVariantAthleteId?: string | null;
   sensitivityVariant?: string | null;
   sensitivityPercent?: number | null;
+  exhibitionAthleteIds?: string | null;
   team?: { name?: string; schoolName?: string | null };
 }
 
@@ -177,6 +178,8 @@ interface TeamEventStats {
         teamRelayLabel?: string;
         lineupId?: string;
         hasOverride?: boolean;
+        /** Exhibition swimmers appear at bottom, excluded from metrics */
+        isExhibition?: boolean;
       }>;
 }
 
@@ -214,6 +217,16 @@ export function EventDetailView({
   }, [projectedRelays]);
   const totalCols = showProjection ? 8 : 6;
   const testSpotSet = useMemo(() => new Set(testSpotAthleteIds), [testSpotAthleteIds]);
+  const exhibitionByTeamId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    meetTeams.forEach((mt) => {
+      const ids = mt.exhibitionAthleteIds
+        ? (typeof mt.exhibitionAthleteIds === "string" ? (JSON.parse(mt.exhibitionAthleteIds) as string[]) : (mt.exhibitionAthleteIds as unknown as string[]))
+        : [];
+      map.set(mt.teamId, new Set(ids));
+    });
+    return map;
+  }, [meetTeams]);
   const meetTeamsByTeamId = useMemo(() => {
     const m = new Map<string, MeetTeamSensitivity>();
     meetTeams.forEach((mt) => m.set(mt.teamId, mt));
@@ -335,28 +348,44 @@ export function EventDetailView({
 
     // Only show entries that have some time data (final, override, or seed); hide "ghost" lineups left after clear
     // In real/hybrid mode: only show entries that came from Apply results (realResultApplied), not from simulation.
+    // In projected mode: only show entries with simulated data (from sim) or seed/override; exclude Apply-only entries.
+    type LineupWithSim = MeetLineup & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null; realResultApplied?: boolean };
     const lineupsWithTime =
       realResultsMode
         ? (eventHasRealResults
             ? meetLineups.filter(
-                (l) => l.finalTime != null && (l as { realResultApplied?: boolean }).realResultApplied === true
+                (l) => l.finalTime != null && (l as LineupWithSim).realResultApplied === true
               )
             : [])
-        : meetLineups.filter(
-            (l) => l.finalTime != null || l.overrideTime != null || l.seedTime != null
-          );
+        : meetLineups.filter((l) => {
+            const sim = l as LineupWithSim;
+            // In projected mode: only include entries with simulated or seed data. Exclude Apply-only entries.
+            const hasProjectedTime = sim.simulatedTime != null || l.seedTime != null || l.overrideTime != null;
+            if (!hasProjectedTime) return false;
+            if (sim.realResultApplied && sim.simulatedPlace == null && sim.simulatedTime == null) return false;
+            return true;
+          });
 
-    // Use effective place/time: real results (place/finalTime) when present, else simulated (simulatedPlace/simulatedTime).
-    // This fixes display when simulation writes to simulated* only while event-detail-view used place (null).
-    type LineupWithSim = typeof lineupsWithTime[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null };
+    // Projected and Actual must stay completely separate. Never let actual results (finalTime, place) appear in Projected.
     const lineupsWithEffectiveData = lineupsWithTime.map((l) => {
       const sim = l as LineupWithSim;
+      if (realResultsMode) {
+        // Actual view: use actual results only (finalTime, place); fallback to simulated/seed only if no actual
+        return {
+          ...l,
+          place: l.place ?? sim.simulatedPlace ?? null,
+          points: l.points ?? sim.simulatedPoints ?? null,
+          finalTime: l.finalTime ?? sim.simulatedTime ?? l.seedTime ?? null,
+          finalTimeSeconds: l.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? l.seedTimeSeconds ?? null,
+        };
+      }
+      // Projected view: use simulated/seed ONLY; never finalTime or place from actual results
       return {
         ...l,
-        place: l.place ?? sim.simulatedPlace ?? null,
-        points: l.points ?? sim.simulatedPoints ?? null,
-        finalTime: l.finalTime ?? sim.simulatedTime ?? null,
-        finalTimeSeconds: l.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? null,
+        place: sim.simulatedPlace ?? null,
+        points: sim.simulatedPoints ?? null,
+        finalTime: sim.simulatedTime ?? l.seedTime ?? null,
+        finalTimeSeconds: sim.simulatedTimeSeconds ?? l.seedTimeSeconds ?? null,
       };
     });
 
@@ -422,12 +451,13 @@ export function EventDetailView({
       tieGroups.push(group);
     }
 
-    // Assign place and points per group; prefer stored place/points when all in group have the same stored place (applied results)
+    // Assign place from sort order to ensure correct ranking. Only use stored place when it matches
+    // expected order (avoids "tie for 1st with different times" when stored data is inconsistent).
     let nextPlace = 1;
     tieGroups.forEach((group) => {
       const hasStoredPlace = group.every((l) => l.place != null) && new Set(group.map((l) => l.place)).size === 1;
       const storedPlace = hasStoredPlace ? group[0]!.place! : null;
-      const placeStart = storedPlace ?? nextPlace;
+      const placeStart = hasStoredPlace && storedPlace === nextPlace ? storedPlace : nextPlace;
       const placeEnd = placeStart + group.length - 1;
       const inSameTier = group.length === 1 || sameFinalTier(placeStart, placeEnd);
       const mergeTie = group.length > 1 && inSameTier;
@@ -467,18 +497,21 @@ export function EventDetailView({
         const stats = statsMap.get(teamId);
         if (!stats) continue;
 
-        if (place >= aFinalRange.min && place <= aFinalRange.max) {
-          stats.aFinalCount++;
-        } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
-          stats.bFinalCount++;
-        } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
-          stats.cFinalCount++;
-        } else {
-          stats.nonScorerCount++;
-        }
+        const isExhibition = exhibitionByTeamId.get(teamId)?.has(lineup.athleteId) ?? false;
 
-        stats.athleteCount++;
-        stats.totalPoints += points;
+        if (!isExhibition) {
+          if (place >= aFinalRange.min && place <= aFinalRange.max) {
+            stats.aFinalCount++;
+          } else if (place >= bFinalRange.min && place <= bFinalRange.max) {
+            stats.bFinalCount++;
+          } else if (place >= cFinalRange.min && place <= cFinalRange.max) {
+            stats.cFinalCount++;
+          } else {
+            stats.nonScorerCount++;
+          }
+          stats.athleteCount++;
+          stats.totalPoints += points;
+        }
         const baseTimeStr = getEffectiveTime(lineup);
         // If stored time looks like points (e.g. "13.5" with no colon), use first teammate's time in tie group so display is correct
         let timeToShow = baseTimeStr;
@@ -517,13 +550,14 @@ export function EventDetailView({
           teamColor: stats.teamColor,
           lineupId: lineup.id,
           hasOverride: !!('overrideTime' in lineup && lineup.overrideTime),
+          isExhibition,
         });
       }
       nextPlace = placeEnd + 1;
     });
 
     return Array.from(statsMap.values()).sort((a, b) => b.totalPoints - a.totalPoints);
-  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, event.id, event.name, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, getEffectiveTimeSeconds, sameFinalTier, meetTeamsByTeamId, eventHasRealResults, realResultsMode]);
+  }, [meetLineups, teams, individualScoring, scoringPlaces, event.eventType, event.id, event.name, aFinalRange, bFinalRange, cFinalRange, getEffectiveTime, getEffectiveTimeSeconds, sameFinalTier, meetTeamsByTeamId, exhibitionByTeamId, eventHasRealResults, realResultsMode]);
 
   // Process relay entries if this is a relay event
   const relayTeamStats = useMemo(() => {
@@ -546,27 +580,41 @@ export function EventDetailView({
       });
     });
 
+    // Same logic as individual: in projected mode, exclude Apply-only relays; prefer simulated data when viewing Projected
+    type RelayWithSim = RelayEntry & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null; realResultApplied?: boolean };
     const relaysWithTime =
       realResultsMode
         ? (eventHasRealResults
             ? relayEntries.filter(
-                (r) => r.finalTime != null && (r as { realResultApplied?: boolean }).realResultApplied === true
+                (r) => r.finalTime != null && (r as RelayWithSim).realResultApplied === true
               )
             : [])
-        : relayEntries.filter(
-            (r) => r.finalTime != null || r.overrideTime != null || r.seedTime != null
-          );
+        : relayEntries.filter((r) => {
+            const sim = r as RelayWithSim;
+            const hasProjectedTime = sim.simulatedTime != null || r.seedTime != null || r.overrideTime != null;
+            if (!hasProjectedTime) return false;
+            if (sim.realResultApplied && sim.simulatedPlace == null && sim.simulatedTime == null) return false;
+            return true;
+          });
 
-    // Use effective place/time: real results when present, else simulated (same fix as individual events)
-    type RelayWithSim = typeof relaysWithTime[number] & { simulatedPlace?: number | null; simulatedPoints?: number | null; simulatedTime?: string | null; simulatedTimeSeconds?: number | null };
+    // Projected and Actual must stay completely separate for relays too
     const relaysWithEffectiveData = relaysWithTime.map((r) => {
       const sim = r as RelayWithSim;
+      if (realResultsMode) {
+        return {
+          ...r,
+          place: r.place ?? sim.simulatedPlace ?? null,
+          points: r.points ?? sim.simulatedPoints ?? null,
+          finalTime: r.finalTime ?? sim.simulatedTime ?? r.seedTime ?? null,
+          finalTimeSeconds: r.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? r.seedTimeSeconds ?? null,
+        };
+      }
       return {
         ...r,
-        place: r.place ?? sim.simulatedPlace ?? null,
-        points: r.points ?? sim.simulatedPoints ?? null,
-        finalTime: r.finalTime ?? sim.simulatedTime ?? null,
-        finalTimeSeconds: r.finalTimeSeconds ?? sim.simulatedTimeSeconds ?? null,
+        place: sim.simulatedPlace ?? null,
+        points: sim.simulatedPoints ?? null,
+        finalTime: sim.simulatedTime ?? r.seedTime ?? null,
+        finalTimeSeconds: sim.simulatedTimeSeconds ?? r.seedTimeSeconds ?? null,
       };
     });
 
@@ -1102,16 +1150,19 @@ export function EventDetailView({
                           .flatMap((stats) => stats.entries)
                           .sort((a, b) => (a.place || 999) - (b.place || 999));
 
-                        const aFinalEntries = allEntries.filter(
+                        const officialEntries = allEntries.filter((e) => !e.isExhibition);
+                        const exhibitionEntries = allEntries.filter((e) => e.isExhibition);
+
+                        const aFinalEntries = officialEntries.filter(
                           (e) => e.place && e.place >= aFinalRange.min && e.place <= aFinalRange.max
                         );
-                        const bFinalEntries = allEntries.filter(
+                        const bFinalEntries = officialEntries.filter(
                           (e) => e.place && e.place >= bFinalRange.min && e.place <= bFinalRange.max
                         );
-                        const cFinalEntries = allEntries.filter(
+                        const cFinalEntries = officialEntries.filter(
                           (e) => e.place && e.place >= cFinalRange.min && e.place <= cFinalRange.max
                         );
-                        const nonScorerEntries = allEntries.filter(
+                        const nonScorerEntries = officialEntries.filter(
                           (e) => !e.place || e.place > cFinalRange.max
                         );
 
@@ -1172,6 +1223,9 @@ export function EventDetailView({
                                               {entry.athleteName}
                                               {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
                                                 <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                              {entry.isExhibition && (
+                                                <Badge variant="outline" className="text-xs font-normal">Exhibition</Badge>
                                               )}
                                             </span>
                                           )}
@@ -1286,6 +1340,9 @@ export function EventDetailView({
                                               {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
                                                 <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
                                               )}
+                                              {entry.isExhibition && (
+                                                <Badge variant="outline" className="text-xs font-normal">Exhibition</Badge>
+                                              )}
                                             </span>
                                           )}
                                         </TableCell>
@@ -1380,6 +1437,9 @@ export function EventDetailView({
                                               {entry.athleteName}
                                               {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
                                                 <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                              )}
+                                              {entry.isExhibition && (
+                                                <Badge variant="outline" className="text-xs font-normal">Exhibition</Badge>
                                               )}
                                             </span>
                                           )}
@@ -1476,6 +1536,9 @@ export function EventDetailView({
                                               {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
                                                 <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
                                               )}
+                                              {entry.isExhibition && (
+                                                <Badge variant="outline" className="text-xs font-normal">Exhibition</Badge>
+                                              )}
                                             </span>
                                           )}
                                         </TableCell>
@@ -1524,6 +1587,104 @@ export function EventDetailView({
                                     </Fragment>
                                   );
                                 })}
+                              </>
+                            )}
+
+                            {/* Exhibition Section */}
+                            {exhibitionEntries.length > 0 && (
+                              <>
+                                <TableRow className="bg-amber-100 hover:bg-amber-100">
+                                  <TableCell colSpan={totalCols} className="text-amber-900 font-semibold py-2">
+                                    Exhibition
+                                  </TableCell>
+                                </TableRow>
+                                {exhibitionEntries
+                                  .sort((a, b) => (a.place ?? 999) - (b.place ?? 999))
+                                  .map((entry, idx) => {
+                                    const relay = event.eventType === "relay" ? relayEntries.find((r) => r.id === entry.lineupId) : null;
+                                    const splits = relay ? getRelaySplits(relay) : [];
+                                    const isExpanded = expandedLineupId === entry.lineupId;
+                                    const canExpandE = !isEditMode && (event.eventType === "relay" || hasSplitsData(entry.lineupId));
+                                    const hasSplitsE = hasSplitsData(entry.lineupId);
+                                    const onRowClickE = canExpandE ? () => toggleExpanded(entry.lineupId ?? undefined) : undefined;
+                                    const splitsPayloadE = getSplitsPayloadForEntry(entry);
+                                    const expansionIdE = `splits-expand-e-${entry.lineupId ?? idx}`;
+                                    return (
+                                      <Fragment key={entry.lineupId ?? `e-${idx}`}>
+                                        <TableRow
+                                          key={`exh-${entry.athleteId}-${idx}`}
+                                          className={`${idx % 2 === 0 ? "bg-amber-50/50" : "bg-white"} ${canExpandE ? "cursor-pointer hover:bg-amber-50" : ""}`}
+                                          onClick={onRowClickE}
+                                          role={onRowClickE ? "button" : undefined}
+                                          tabIndex={onRowClickE ? 0 : undefined}
+                                          aria-expanded={onRowClickE ? isExpanded : undefined}
+                                          aria-controls={onRowClickE ? expansionIdE : undefined}
+                                          onKeyDown={onRowClickE ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleExpanded(entry.lineupId ?? undefined); } } : undefined}
+                                        >
+                                          <TableCell className="w-[4rem] font-bold pr-2">
+                                            <span className="flex items-center gap-2">
+                                              <span className="inline-flex w-5 shrink-0 items-center justify-center">
+                                                {event.eventType === "relay" || hasSplitsE ? (isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />) : null}
+                                              </span>
+                                              {entry.place ?? "—"}
+                                            </span>
+                                          </TableCell>
+                                          <TableCell className="w-[16rem] font-medium pl-3 pr-4">
+                                            {event.eventType === "relay" ? (entry.teamRelayLabel ?? entry.teamName) : (
+                                              <span className="inline-flex items-center gap-1.5">
+                                                {entry.athleteName}
+                                                {entry.realAthleteId && testSpotSet.has(entry.realAthleteId) && (
+                                                  <Badge variant="secondary" className="text-xs font-normal">Test</Badge>
+                                                )}
+                                                <Badge variant="outline" className="text-xs font-normal">Exhibition</Badge>
+                                              </span>
+                                            )}
+                                          </TableCell>
+                                          <TableCell className="w-[4rem] pl-1 text-left text-sm text-slate-500">
+                                            {event.eventType !== "relay" ? (entry.year ?? "—") : ""}
+                                          </TableCell>
+                                          <TableCell className="pr-8">
+                                            <span style={entry.teamColor ? { color: entry.teamColor, fontWeight: 600 } : {}}>{entry.teamName}</span>
+                                          </TableCell>
+                                          <TableCell className="w-[7.5rem] text-right">
+                                            <span className="inline-flex items-center justify-end gap-1 w-full">
+                                              {renderTimeCell(entry)}
+                                              {hasSplitsE && <BarChart2 className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden />}
+                                            </span>
+                                          </TableCell>
+                                          <TableCell className="w-[6rem] text-right font-semibold text-slate-400 pl-5">-</TableCell>
+                                          {renderProjectionCells(entry)}
+                                        </TableRow>
+                                        {isExpanded && hasSplitsE && splitsPayloadE && (
+                                          <TableRow key={`exh-expand-${entry.lineupId}`} className={idx % 2 === 0 ? "bg-amber-50/40" : "bg-white/90"}>
+                                            <TableCell colSpan={totalCols} className="p-4 align-top border-l-4 border-amber-200" id={expansionIdE}>
+                                              <SplitsDetailView
+                                                type={splitsPayloadE.type}
+                                                title={splitsPayloadE.title}
+                                                eventName={splitsPayloadE.eventName}
+                                                finalTime={splitsPayloadE.finalTime}
+                                                splitsData={splitsPayloadE.splitsData}
+                                                athleteIdToName={athleteIdToName}
+                                                compact
+                                              />
+                                            </TableCell>
+                                          </TableRow>
+                                        )}
+                                        {isExpanded && !hasSplitsE && event.eventType === "relay" && splits.length > 0 && splits.map((split, i) => (
+                                          <TableRow key={`exh-${entry.athleteId}-${idx}-split-${i}`} className={idx % 2 === 0 ? "bg-amber-50/40" : "bg-white/80"}>
+                                            <TableCell className="w-[4rem] pr-2" />
+                                            <TableCell className="text-sm italic text-slate-500 py-1.5">{split.name}</TableCell>
+                                            <TableCell />
+                                            <TableCell />
+                                            <TableCell className="w-[7.5rem] text-right text-sm italic font-mono text-slate-500 tabular-nums py-1.5">{split.time ? normalizeTimeFormat(split.time) : "—"}</TableCell>
+                                            <TableCell className="w-[6rem] pl-5" />
+                                            {showProjection && <TableCell />}
+                                            {showProjection && <TableCell />}
+                                          </TableRow>
+                                        ))}
+                                      </Fragment>
+                                    );
+                                  })}
                               </>
                             )}
                           </>

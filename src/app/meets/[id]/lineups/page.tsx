@@ -65,14 +65,17 @@ export default async function MeetLineupsPage({
     },
   });
 
-  // Filter athletes to only show those selected in the roster
+  // Filter athletes to only show those in roster (selected + exhibition)
   if (meet) {
     meet.meetTeams = meet.meetTeams.map((meetTeam) => {
       const selectedAthleteIds = meetTeam.selectedAthletes
         ? (JSON.parse(meetTeam.selectedAthletes) as string[])
         : [];
+      const exRaw = (meetTeam as { exhibitionAthleteIds?: string | null }).exhibitionAthleteIds;
+      const exhibitionAthleteIds = exRaw ? (JSON.parse(exRaw) as string[]) : [];
+      const rosterIds = new Set([...selectedAthleteIds, ...exhibitionAthleteIds]);
       const filtered = meetTeam.team.athletes.filter((athlete) =>
-        selectedAthleteIds.includes(athlete.id)
+        rosterIds.has(athlete.id)
       );
       return {
         ...meetTeam,

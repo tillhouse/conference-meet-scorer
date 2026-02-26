@@ -269,6 +269,7 @@ export default async function EventDetailPage({
           sensitivityVariantAthleteId: (mt as { sensitivityVariantAthleteId?: string | null }).sensitivityVariantAthleteId,
           sensitivityVariant: (mt as { sensitivityVariant?: string | null }).sensitivityVariant,
           sensitivityPercent: (mt as { sensitivityPercent?: number | null }).sensitivityPercent,
+          exhibitionAthleteIds: (mt as { exhibitionAthleteIds?: string | null }).exhibitionAthleteIds,
           team: mt.team,
         }))}
         eventHasRealResults={eventHasRealResults}

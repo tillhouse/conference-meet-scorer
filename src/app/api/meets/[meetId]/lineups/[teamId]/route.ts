@@ -83,9 +83,12 @@ export async function POST(
     const meetTeam = await prisma.meetTeam.findUnique({
       where: { meetId_teamId: { meetId, teamId } },
     });
-    const rosterAthleteIds: string[] = meetTeam?.selectedAthletes
+    const selectedAthleteIds: string[] = meetTeam?.selectedAthletes
       ? (JSON.parse(meetTeam.selectedAthletes) as string[])
       : [];
+    const exRaw = (meetTeam as { exhibitionAthleteIds?: string | null }).exhibitionAthleteIds;
+    const exhibitionAthleteIds: string[] = exRaw ? (JSON.parse(exRaw) as string[]) : [];
+    const rosterAthleteIds = [...selectedAthleteIds, ...exhibitionAthleteIds];
 
     // Get all athletes and events to validate
     const athleteIds = Object.keys(data.lineups);

@@ -49,6 +49,7 @@ interface MeetTeam {
   team: Team;
   testSpotAthleteIds?: string | null;
   testSpotScoringAthleteId?: string | null;
+  exhibitionAthleteIds?: string | null;
   sensitivityAthleteIds?: string | null;
   sensitivityPercent?: number | null;
   sensitivityVariant?: string | null;
@@ -147,6 +148,18 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
     setSortDirection("desc");
   }, [viewMode]);
 
+  // Per-team exhibition athlete IDs (excluded from all metrics)
+  const exhibitionByTeamId = useMemo(() => {
+    const map = new Map<string, Set<string>>();
+    meetTeams.forEach((mt) => {
+      const ids = mt.exhibitionAthleteIds
+        ? (typeof mt.exhibitionAthleteIds === "string" ? (JSON.parse(mt.exhibitionAthleteIds) as string[]) : mt.exhibitionAthleteIds)
+        : [];
+      map.set(mt.teamId, new Set(ids));
+    });
+    return map;
+  }, [meetTeams]);
+
   // All event IDs that have entries in this meet (from lineups + relays)
   const allEventIdsInMeet = useMemo(
     () => new Set([...meetLineups.map((l) => l.eventId), ...relayEntries.map((r) => r.eventId)]),
@@ -163,6 +176,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
 
     meetLineups.forEach((lineup) => {
       const teamId = lineup.athlete.team.id;
+      if (exhibitionByTeamId.get(teamId)?.has(lineup.athleteId)) return;
       const arr = map.get(teamId);
       if (!arr) return;
       const d = eventToDay(lineup.eventId);
@@ -176,7 +190,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
     });
 
     return map;
-  }, [meetTeams, meetLineups, relayEntries, durationDays, eventDays]);
+  }, [meetTeams, meetLineups, relayEntries, durationDays, eventDays, exhibitionByTeamId]);
 
   // When filtering by day: compute standings from lineups/relays for events on that day only.
   // Events not in eventDays default to Day 1 (same as edit UI).
@@ -198,6 +212,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
       meetLineups.forEach((lineup) => {
         if (!eventIdSet.has(lineup.eventId)) return;
         if (lineup.athlete.team.id !== mt.teamId) return;
+        if (exhibitionByTeamId.get(mt.teamId)?.has(lineup.athleteId)) return;
         const pts = lineup.points ?? 0;
         if (lineup.event.eventType === "diving") divingScore += pts;
         else if (lineup.event.eventType === "individual") individualScore += pts;
@@ -215,7 +230,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
         totalScore,
       };
     });
-  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, allEventIdsInMeet]);
+  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, allEventIdsInMeet, exhibitionByTeamId]);
 
   // Handle column sorting
   const handleSort = (column: SortColumn) => {
@@ -276,7 +291,8 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
 
     const eventToDayIndex = (eid: string) => Math.max(0, Math.min(days - 1, Number(eventDays?.[eid] ?? 1) - 1));
 
-    const processEntry = (teamId: string, eventId: string, place: number, points: number) => {
+    const processEntry = (teamId: string, eventId: string, place: number, points: number, isExhibition: boolean) => {
+      if (isExhibition) return;
       const stats = map.get(teamId);
       if (!stats) return;
       if (selectedDay != null) {
@@ -299,16 +315,17 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
       const place = lineup.place;
       if (place == null || typeof place !== "number") return;
       const teamId = lineup.athlete.team.id;
-      processEntry(teamId, lineup.eventId, place, lineup.points ?? 0);
+      const isExhibition = exhibitionByTeamId.get(teamId)?.has(lineup.athleteId) ?? false;
+      processEntry(teamId, lineup.eventId, place, lineup.points ?? 0, isExhibition);
     });
     relayEntries.forEach((relay) => {
       const place = relay.place;
       if (place == null || typeof place !== "number") return;
-      processEntry(relay.teamId, relay.eventId, place, relay.points ?? 0);
+      processEntry(relay.teamId, relay.eventId, place, relay.points ?? 0, false);
     });
 
     return map;
-  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, scoringPlacesNum]);
+  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, scoringPlacesNum, exhibitionByTeamId]);
 
   // Calculate advanced stats for each team (filter by selected day when set)
   const teamStats = useMemo(() => {
@@ -335,6 +352,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
     meetLineups.forEach((lineup) => {
       if (eventIdsOnSelectedDay != null && !eventIdsOnSelectedDay.has(lineup.eventId)) return;
       const teamId = lineup.athlete.team.id;
+      if (exhibitionByTeamId.get(teamId)?.has(lineup.athleteId)) return;
       const stats = statsMap.get(teamId);
       if (!stats) return;
 
@@ -352,7 +370,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
     });
 
     return statsMap;
-  }, [meetTeams, meetLineups, eventIdsOnSelectedDay]);
+  }, [meetTeams, meetLineups, eventIdsOnSelectedDay, exhibitionByTeamId]);
 
   // Sort teams based on selected column and direction (use displayTeams so day filter applies)
   const sortedTeams = useMemo(() => {
@@ -874,9 +892,7 @@ export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayE
                         ))}
                         <div className="text-right font-bold text-sm">{stats.totalPoints.toFixed(1)}</div>
                         <div className="text-right font-medium text-sm">{stats.entries}</div>
-                        <div className="text-right">
-                          <Badge variant={stats.aFinalCount > 0 ? "default" : "outline"}>{stats.aFinalCount}</Badge>
-                        </div>
+                        <div className="text-right font-medium text-sm">{stats.aFinalCount}</div>
                         <div className="text-right">
                           <Badge variant={stats.bFinalCount > 0 ? "secondary" : "outline"}>{stats.bFinalCount}</Badge>
                         </div>

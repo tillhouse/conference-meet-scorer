@@ -4,10 +4,20 @@ import { z } from "zod";
 
 const SENSITIVITY_MAX_ATHLETES = 3;
 
+function safeParseJson<T>(val: string | null | undefined): T | null {
+  if (val == null || val === "") return null;
+  try {
+    return JSON.parse(val) as T;
+  } catch {
+    return null;
+  }
+}
+
 const saveRosterSchema = z.object({
   athleteIds: z.array(z.string()),
   testSpotAthleteIds: z.array(z.string()).optional(),
   testSpotScoringAthleteId: z.string().optional(),
+  exhibitionAthleteIds: z.array(z.string()).optional(),
   sensitivityAthleteIds: z.array(z.string()).max(SENSITIVITY_MAX_ATHLETES).optional(),
   sensitivityPercent: z.number().min(0.5).max(10).optional(),
 });
@@ -35,15 +45,12 @@ export async function GET(
       });
     }
 
-    const athleteIds = meetTeam.selectedAthletes
-      ? (JSON.parse(meetTeam.selectedAthletes) as string[])
-      : [];
-    const testSpotAthleteIds = meetTeam.testSpotAthleteIds
-      ? (JSON.parse(meetTeam.testSpotAthleteIds) as string[])
-      : [];
+    const athleteIds = safeParseJson<string[]>(meetTeam.selectedAthletes) ?? [];
+    const testSpotAthleteIds = safeParseJson<string[]>(meetTeam.testSpotAthleteIds) ?? [];
     const testSpotScoringAthleteId = meetTeam.testSpotScoringAthleteId ?? null;
-    const mt = meetTeam as { sensitivityAthleteIds?: string | null; sensitivityPercent?: number | null; sensitivityVariant?: string | null; sensitivityVariantAthleteId?: string | null };
-    const sensitivityAthleteIds = mt.sensitivityAthleteIds ? (JSON.parse(mt.sensitivityAthleteIds) as string[]) : [];
+    const mt = meetTeam as { exhibitionAthleteIds?: string | null; sensitivityAthleteIds?: string | null; sensitivityPercent?: number | null; sensitivityVariant?: string | null; sensitivityVariantAthleteId?: string | null };
+    const exhibitionAthleteIds = safeParseJson<string[]>(mt.exhibitionAthleteIds) ?? [];
+    const sensitivityAthleteIds = safeParseJson<string[]>(mt.sensitivityAthleteIds) ?? [];
     const sensitivityPercent = mt.sensitivityPercent ?? null;
     const sensitivityVariant = mt.sensitivityVariant ?? null;
     const sensitivityVariantAthleteId = mt.sensitivityVariantAthleteId ?? null;
@@ -52,6 +59,7 @@ export async function GET(
       athleteIds,
       testSpotAthleteIds,
       testSpotScoringAthleteId,
+      exhibitionAthleteIds,
       sensitivityAthleteIds,
       sensitivityPercent,
       sensitivityVariant,
@@ -164,6 +172,29 @@ export async function POST(
       }
     }
 
+    // Exhibition: must be disjoint from selected athletes (net-new additions, not on main roster)
+    const exhibitionAthleteIds = (data.exhibitionAthleteIds ?? []).filter(Boolean);
+    for (const id of exhibitionAthleteIds) {
+      if (athleteIdSet.has(id)) {
+        return NextResponse.json(
+          { error: "Exhibition athletes must not be on the main roster. Remove them from the main roster first." },
+          { status: 400 }
+        );
+      }
+    }
+    // Verify exhibition athletes belong to this team
+    if (exhibitionAthleteIds.length > 0) {
+      const exhibitionAthletes = await prisma.athlete.findMany({
+        where: { id: { in: exhibitionAthleteIds }, teamId },
+      });
+      if (exhibitionAthletes.length !== exhibitionAthleteIds.length) {
+        return NextResponse.json(
+          { error: "Some exhibition athletes not found or don't belong to this team" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Scoring roster = everyone except test-spot candidates, plus the one scoring test-spot athlete
     const scoringAthleteIds = data.athleteIds.filter((id) => !testSpotSet.has(id) || id === testSpotScoringAthleteId);
     const scoringAthletes = athletes.filter((a) => scoringAthleteIds.includes(a.id));
@@ -181,13 +212,14 @@ export async function POST(
     }
 
     const mtExisting = meetTeam as { sensitivityAthleteIds?: string | null; sensitivityVariant?: string | null; sensitivityVariantAthleteId?: string | null };
-    const previousSensIds: string[] = mtExisting.sensitivityAthleteIds ? (JSON.parse(mtExisting.sensitivityAthleteIds) as string[]) : [];
+    const previousSensIds: string[] = safeParseJson<string[]>(mtExisting.sensitivityAthleteIds) ?? [];
 
     // Save the roster selection to MeetTeam
     const updateData: Record<string, unknown> = {
       selectedAthletes: JSON.stringify(data.athleteIds),
       testSpotAthleteIds: testSpotAthleteIds.length > 0 ? JSON.stringify(testSpotAthleteIds) : null,
       testSpotScoringAthleteId: testSpotAthleteIds.length > 0 ? testSpotScoringAthleteId : null,
+      exhibitionAthleteIds: exhibitionAthleteIds.length > 0 ? JSON.stringify(exhibitionAthleteIds) : null,
       sensitivityAthleteIds: sensitivityAthleteIds.length > 0 ? JSON.stringify(sensitivityAthleteIds) : null,
       sensitivityPercent: sensitivityPercent ?? null,
       sensitivityVariant: sensitivityAthleteIds.length > 0 ? (mtExisting.sensitivityVariant ?? "baseline") : null,
@@ -235,9 +267,8 @@ export async function POST(
       throw updateError;
     }
 
-    // Enforce roster: only athletes in the current roster may have lineups or relay slots.
-    // Remove from events and relays any athlete on this team who is NOT in data.athleteIds.
-    const rosterIdSet = new Set(data.athleteIds);
+    // Enforce roster: only athletes in the current roster (main + exhibition) may have lineups or relay slots.
+    const rosterIdSet = new Set([...data.athleteIds, ...exhibitionAthleteIds]);
 
     // Delete all meet lineups for this meet where the athlete is on this team but not on the roster
     const lineupsToDelete = await prisma.meetLineup.findMany({
