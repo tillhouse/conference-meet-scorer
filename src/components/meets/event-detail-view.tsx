@@ -23,9 +23,10 @@ import {
 } from "@/components/ui/select";
 import { formatName, formatTeamName, formatTeamRelayLabel, normalizeTimeFormat, parseTimeToSeconds, formatSecondsToTime } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from "recharts";
-import { Edit2, Save, X, ChevronDown, ChevronRight, BarChart2, Trash2 } from "lucide-react";
+import { Edit2, Save, X, ChevronDown, ChevronRight, BarChart2, Trash2, Copy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { formatTableForSlack, buildSlackCopyString } from "@/lib/slack-copy";
 import { SplitsDetailView, type IndividualSplitsData, type RelaySplitsData } from "@/components/meets/splits-detail-view";
 
 function ordinal(n: number): string {
@@ -811,6 +812,98 @@ export function EventDetailView({
     );
   };
 
+  const handleCopyResultsForSlack = useCallback(() => {
+    const allEntries = displayStats.flatMap((s) => s.entries).sort((a, b) => (a.place ?? 999) - (b.place ?? 999));
+    const aFinal = allEntries.filter((e) => e.place != null && e.place >= aFinalRange.min && e.place <= aFinalRange.max);
+    const bFinal = allEntries.filter((e) => e.place != null && e.place >= bFinalRange.min && e.place <= bFinalRange.max);
+    const cFinal = allEntries.filter((e) => e.place != null && e.place >= cFinalRange.min && e.place <= cFinalRange.max);
+    const nonScorer = allEntries.filter((e) => !e.place || e.place > cFinalRange.max);
+
+    const sections: { title: string; entries: typeof allEntries }[] = [
+      { title: `A Final (Places ${aFinalRange.min}-${aFinalRange.max})`, entries: aFinal },
+      { title: `B Final (Places ${bFinalRange.min}-${bFinalRange.max})`, entries: bFinal },
+      { title: `C Final (Places ${cFinalRange.min}-${cFinalRange.max})`, entries: cFinal },
+      { title: `Non-Scorers (Places ${cFinalRange.max + 1}+)`, entries: nonScorer },
+    ];
+
+    const headers = ["Place", event.eventType === "relay" ? "Relay" : "Athlete", event.eventType !== "relay" ? "Year" : "", "Team", event.eventType === "diving" ? "Score" : "Time", "Points"];
+    if (showProjection) headers.push("Proj.", "+/−");
+
+    const blocks: string[] = [];
+    for (const { title, entries } of sections) {
+      if (entries.length === 0) continue;
+      const rows = entries.map((entry) => {
+        const name = ("teamRelayLabel" in entry && entry.teamRelayLabel) ? entry.teamRelayLabel : entry.athleteName;
+        const year = event.eventType !== "relay" && "year" in entry && entry.year != null ? String(entry.year) : "";
+        const row: string[] = [
+          entry.place != null ? String(entry.place) : "—",
+          name,
+          year,
+          entry.teamName,
+          entry.time ?? "—",
+          entry.points > 0 ? entry.points.toFixed(1) : "-",
+        ];
+        if (showProjection) {
+          let proj: { simulatedPlace: number | null; simulatedPoints: number | null } | undefined;
+          if (event.eventType === "relay") {
+            const relay = relayEntries.find((r) => r.id === entry.lineupId);
+            if (relay) proj = projByTeamId.get(relay.teamId);
+          } else if ("realAthleteId" in entry && entry.realAthleteId) {
+            proj = projByAthleteId.get(entry.realAthleteId);
+          }
+          const projPlace = proj?.simulatedPlace;
+          const projPoints = proj?.simulatedPoints ?? 0;
+          const delta = proj != null ? entry.points - projPoints : null;
+          row.push(projPlace != null ? ordinal(projPlace) : "--");
+          row.push(delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}` : "--");
+        }
+        return row;
+      });
+      const align = ["right", "left", "left", "left", "right", "right"] as const;
+      if (showProjection) (align as unknown as string[]).push("right", "right");
+      blocks.push(title);
+      blocks.push(formatTableForSlack({ headers, rows, align: [...align], maxColWidths: [6, 28, 6, 14, 12, 8, 8, 8] }));
+      blocks.push("");
+    }
+
+    const table = blocks.join("\n").trim();
+    const title = `${event.name} – Results`;
+    const full = buildSlackCopyString(table, title);
+    navigator.clipboard.writeText(full).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Failed to copy")
+    );
+  }, [displayStats, event, aFinalRange, bFinalRange, cFinalRange, showProjection, projByAthleteId, projByTeamId, relayEntries]);
+
+  const handleCopyTeamBreakdownForSlack = useCallback(() => {
+    const headers = ["Team", "Total Pts", "Entries", "A Final", "B Final", "C Final", "Non-Scorer", "ROI"];
+    const rows = displayStats.map((stats) => {
+      const roi = stats.athleteCount > 0 ? ((stats.aFinalCount / stats.athleteCount) * 100).toFixed(1) : "0.0";
+      return [
+        stats.teamName,
+        stats.totalPoints.toFixed(1),
+        String(stats.athleteCount),
+        String(stats.aFinalCount),
+        String(stats.bFinalCount),
+        String(stats.cFinalCount),
+        String(stats.nonScorerCount),
+        `${roi}%`,
+      ];
+    });
+    const table = formatTableForSlack({
+      headers,
+      rows,
+      align: ["left", "right", "right", "right", "right", "right", "right", "right"],
+      maxColWidths: [24, 10, 8, 8, 8, 8, 12, 8],
+    });
+    const title = `${event.name} – Team Performance Breakdown`;
+    const full = buildSlackCopyString(table, title);
+    navigator.clipboard.writeText(full).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Failed to copy")
+    );
+  }, [displayStats, event.name]);
+
   return (
     <div className="space-y-6">
       <Tabs defaultValue="results" className="w-full">
@@ -831,6 +924,10 @@ export function EventDetailView({
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  <Button type="button" variant="outline" size="sm" onClick={handleCopyResultsForSlack} aria-label="Copy results for Slack">
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy for Slack
+                  </Button>
                   {meetTeams
                       .filter((mt) => mt.sensitivityVariantAthleteId)
                       .map((mt) => {
@@ -1474,10 +1571,18 @@ export function EventDetailView({
           {/* Detailed Team Breakdown Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Team Performance Breakdown</CardTitle>
-              <CardDescription>
-                Detailed breakdown of each team's performance in this event
-              </CardDescription>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle>Team Performance Breakdown</CardTitle>
+                  <CardDescription>
+                    Detailed breakdown of each team's performance in this event
+                  </CardDescription>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleCopyTeamBreakdownForSlack} aria-label="Copy team breakdown for Slack">
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy for Slack
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="rounded-md border">

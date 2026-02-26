@@ -3,9 +3,11 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowUp, ArrowDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowUp, ArrowDown, Copy } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { formatTeamName, formatName } from "@/lib/utils";
+import { formatTeamName, formatName, formatTeamRelayLabel } from "@/lib/utils";
+import { formatTableForSlack, buildSlackCopyString } from "@/lib/slack-copy";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -14,6 +16,7 @@ interface Team {
   name: string;
   schoolName?: string | null;
   primaryColor: string | null;
+  shortName?: string | null;
 }
 
 interface MeetLineup {
@@ -21,6 +24,7 @@ interface MeetLineup {
   athleteId: string;
   eventId: string;
   points: number | null;
+  place?: number | null;
   athlete: {
     id: string;
     firstName?: string;
@@ -57,11 +61,13 @@ interface RelayEntry {
   teamId: string;
   eventId: string;
   points: number | null;
+  place?: number | null;
   team: Team;
 }
 
 interface TeamStandingsProps {
   meetId?: string;
+  meetName?: string;
   meetTeams: MeetTeam[];
   meetLineups: MeetLineup[];
   relayEntries?: RelayEntry[];
@@ -69,6 +75,7 @@ interface TeamStandingsProps {
   eventDays?: Record<string, number> | null;
   projectedMeetTeams?: MeetTeam[];
   scoringMode?: string | null;
+  scoringPlaces?: number;
 }
 
 type SortColumn = 
@@ -83,14 +90,19 @@ type SortColumn =
   | "ptsPerSwim"
   | "ptsPerDive"
   | "ptsPerSplash"
-  | "day-1" | "day-2" | "day-3" | "day-4" | "day-5";
+  | "day-1" | "day-2" | "day-3" | "day-4" | "day-5"
+  | "finalsEntries"
+  | "finalsA" | "finalsB" | "finalsC" | "finalsNon"
+  | "finalsAFinalPct"
+  | "finalsPtsPerEntry"
+  | "day-1-pte" | "day-2-pte" | "day-3-pte" | "day-4-pte" | "day-5-pte";
 
 type SortDirection = "asc" | "desc";
 
-type ViewMode = "standard" | "advanced" | "dailyGrid";
+type ViewMode = "standard" | "advanced" | "dailyGrid" | "finalsBreakdown";
 type DailyGridSubView = "subScore" | "cumulative";
 
-export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null, projectedMeetTeams, scoringMode }: TeamStandingsProps) {
+export function TeamStandings({ meetId, meetName, meetTeams, meetLineups, relayEntries = [], durationDays = 1, eventDays = null, projectedMeetTeams, scoringMode, scoringPlaces = 24 }: TeamStandingsProps) {
   const router = useRouter();
   const showDelta = (scoringMode === "real" || scoringMode === "hybrid") && projectedMeetTeams != null && projectedMeetTeams.length > 0;
   const projectedByTeamId = useMemo(() => {
@@ -227,6 +239,77 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
     return set;
   }, [selectedDay, eventDays, allEventIdsInMeet]);
 
+  // Finals breakdown: A/B/C ranges and per-team (and per-day) aggregates. Only entries with numeric place count.
+  const scoringPlacesNum = scoringPlaces ?? 24;
+  const aFinalRange = { min: 1, max: Math.min(8, scoringPlacesNum) };
+  const bFinalRange = { min: 9, max: Math.min(16, scoringPlacesNum) };
+  const cFinalRange = { min: 17, max: Math.min(24, scoringPlacesNum) };
+
+  type FinalsTeamStats = {
+    teamId: string;
+    totalPoints: number;
+    entries: number;
+    aFinalCount: number;
+    bFinalCount: number;
+    cFinalCount: number;
+    nonScorerCount: number;
+    dayPoints: number[];
+    dayEntries: number[];
+  };
+
+  const finalsBreakdownStats = useMemo(() => {
+    const days = durationDays < 1 ? 1 : durationDays;
+    const map = new Map<string, FinalsTeamStats>();
+    meetTeams.forEach((mt) => {
+      map.set(mt.teamId, {
+        teamId: mt.teamId,
+        totalPoints: 0,
+        entries: 0,
+        aFinalCount: 0,
+        bFinalCount: 0,
+        cFinalCount: 0,
+        nonScorerCount: 0,
+        dayPoints: Array.from({ length: days }, () => 0),
+        dayEntries: Array.from({ length: days }, () => 0),
+      });
+    });
+
+    const eventToDayIndex = (eid: string) => Math.max(0, Math.min(days - 1, Number(eventDays?.[eid] ?? 1) - 1));
+
+    const processEntry = (teamId: string, eventId: string, place: number, points: number) => {
+      const stats = map.get(teamId);
+      if (!stats) return;
+      if (selectedDay != null) {
+        const assignedDay = Number(eventDays?.[eventId] ?? 1);
+        if (assignedDay !== selectedDay) return;
+      }
+      stats.entries++;
+      stats.totalPoints += points;
+      const d = eventToDayIndex(eventId);
+      stats.dayPoints[d] += points;
+      stats.dayEntries[d] += 1;
+
+      if (place >= aFinalRange.min && place <= aFinalRange.max) stats.aFinalCount++;
+      else if (place >= bFinalRange.min && place <= bFinalRange.max) stats.bFinalCount++;
+      else if (place >= cFinalRange.min && place <= cFinalRange.max) stats.cFinalCount++;
+      else stats.nonScorerCount++;
+    };
+
+    meetLineups.forEach((lineup) => {
+      const place = lineup.place;
+      if (place == null || typeof place !== "number") return;
+      const teamId = lineup.athlete.team.id;
+      processEntry(teamId, lineup.eventId, place, lineup.points ?? 0);
+    });
+    relayEntries.forEach((relay) => {
+      const place = relay.place;
+      if (place == null || typeof place !== "number") return;
+      processEntry(relay.teamId, relay.eventId, place, relay.points ?? 0);
+    });
+
+    return map;
+  }, [meetTeams, meetLineups, relayEntries, selectedDay, eventDays, durationDays, scoringPlacesNum]);
+
   // Calculate advanced stats for each team (filter by selected day when set)
   const teamStats = useMemo(() => {
     const statsMap = new Map<string, {
@@ -355,6 +438,70 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
     });
   }, [displayTeams, sortColumn, sortDirection, teamStats, pointsByTeamByDay, dailyGridSubView]);
 
+  // Sorted teams for Finals Breakdown view (sort by finals stats)
+  const sortedFinalsTeams = useMemo(() => {
+    const teams = [...meetTeams];
+    return teams.sort((a, b) => {
+      const aStats = finalsBreakdownStats.get(a.teamId);
+      const bStats = finalsBreakdownStats.get(b.teamId);
+      if (!aStats || !bStats) return 0;
+      let aValue: number | string;
+      let bValue: number | string;
+      if (sortColumn === "team") {
+        aValue = a.team.name.toLowerCase();
+        bValue = b.team.name.toLowerCase();
+      } else if (sortColumn === "total") {
+        aValue = aStats.totalPoints;
+        bValue = bStats.totalPoints;
+      } else if (sortColumn === "finalsEntries") {
+        aValue = aStats.entries;
+        bValue = bStats.entries;
+      } else if (sortColumn === "finalsA") {
+        aValue = aStats.aFinalCount;
+        bValue = bStats.aFinalCount;
+      } else if (sortColumn === "finalsB") {
+        aValue = aStats.bFinalCount;
+        bValue = bStats.bFinalCount;
+      } else if (sortColumn === "finalsC") {
+        aValue = aStats.cFinalCount;
+        bValue = bStats.cFinalCount;
+      } else if (sortColumn === "finalsNon") {
+        aValue = aStats.nonScorerCount;
+        bValue = bStats.nonScorerCount;
+      } else if (sortColumn === "finalsAFinalPct") {
+        aValue = aStats.entries > 0 ? (aStats.aFinalCount / aStats.entries) * 100 : 0;
+        bValue = bStats.entries > 0 ? (bStats.aFinalCount / bStats.entries) * 100 : 0;
+      } else if (sortColumn === "finalsPtsPerEntry") {
+        aValue = aStats.entries > 0 ? aStats.totalPoints / aStats.entries : 0;
+        bValue = bStats.entries > 0 ? bStats.totalPoints / bStats.entries : 0;
+      } else if (
+        sortColumn === "day-1" || sortColumn === "day-2" || sortColumn === "day-3" ||
+        sortColumn === "day-4" || sortColumn === "day-5"
+      ) {
+        const dayIndex = parseInt(sortColumn.split("-")[1], 10) - 1;
+        aValue = aStats.dayPoints[dayIndex] ?? 0;
+        bValue = bStats.dayPoints[dayIndex] ?? 0;
+      } else if (
+        sortColumn === "day-1-pte" || sortColumn === "day-2-pte" || sortColumn === "day-3-pte" ||
+        sortColumn === "day-4-pte" || sortColumn === "day-5-pte"
+      ) {
+        const dayIndex = parseInt(sortColumn.split("-")[1], 10) - 1;
+        const aEnt = aStats.dayEntries[dayIndex] ?? 0;
+        const bEnt = bStats.dayEntries[dayIndex] ?? 0;
+        aValue = aEnt > 0 ? (aStats.dayPoints[dayIndex] ?? 0) / aEnt : 0;
+        bValue = bEnt > 0 ? (bStats.dayPoints[dayIndex] ?? 0) / bEnt : 0;
+      } else {
+        return 0;
+      }
+      if (typeof aValue === "string" && typeof bValue === "string") {
+        return sortDirection === "asc" ? aValue.localeCompare(bValue) : bValue.localeCompare(aValue);
+      }
+      return sortDirection === "asc"
+        ? (aValue as number) - (bValue as number)
+        : (bValue as number) - (aValue as number);
+    });
+  }, [meetTeams, finalsBreakdownStats, sortColumn, sortDirection]);
+
   // Helper to render sortable header
   const renderSortableHeader = (
     label: string,
@@ -378,6 +525,125 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
           <ArrowUp className="h-3 w-3 opacity-0 group-hover:opacity-30 transition-opacity" />
         )}
       </button>
+    );
+  };
+
+  const handleCopyForSlack = () => {
+    const daySuffix = selectedDay != null ? ` – Day ${selectedDay}` : "";
+    const baseTitle = meetName ? `${meetName} – ` : "";
+
+    let title: string;
+    let table: string;
+
+    if (viewMode === "standard") {
+      title = `${baseTitle}Team Standings (Standard View)${daySuffix}`;
+      const headers = ["Rank", "Team", "Individual", "Relays", "Diving", "Total"];
+      if (showDelta) headers.push("vs Proj.", "Pts Behind");
+      const firstTotal = sortedTeams[0]?.totalScore ?? 0;
+      const rows = sortedTeams.map((mt, i) => {
+        const r: string[] = [
+          String(i + 1),
+          formatTeamRelayLabel(mt.team),
+          mt.individualScore.toFixed(1),
+          mt.relayScore.toFixed(1),
+          mt.divingScore.toFixed(1),
+          mt.totalScore.toFixed(1),
+        ];
+        if (showDelta) {
+          const delta = getDelta(mt.teamId, mt.totalScore);
+          r.push(delta != null ? `${delta > 0 ? "+" : ""}${delta.toFixed(1)}` : "--");
+          r.push(i === 0 ? "-" : (firstTotal - mt.totalScore).toFixed(1));
+        }
+        return r;
+      });
+      const numCols = headers.length;
+      const alignStandard: ("left" | "right")[] = ["left", "left", ...Array.from({ length: numCols - 2 }, () => "right")];
+      table = formatTableForSlack({ headers, rows, align: alignStandard, maxColWidths: [5, 10, 10, 10, 10, 10, 10, 10] });
+    } else if (viewMode === "advanced") {
+      title = `${baseTitle}Team Standings (Advanced Stats)${daySuffix}`;
+      const headers = ["Rank", "Team", "Swimmers", "Divers", "Pts/Swim", "Pts/Dive", "Pts/Splash", "Total"];
+      const rows = sortedTeams.map((mt, i) => {
+        const stats = teamStats.get(mt.teamId);
+        if (!stats) return [String(i + 1), formatTeamRelayLabel(mt.team), "-", "-", "-", "-", "-", "-"];
+        const ptsPerSwim = stats.swims > 0 ? (stats.swimmingPoints / stats.swims).toFixed(2) : "-";
+        const ptsPerDive = stats.dives > 0 ? (stats.divingPoints / stats.dives).toFixed(2) : "-";
+        const totalSplashes = stats.swims + stats.dives;
+        const ptsPerSplash = totalSplashes > 0 ? ((stats.swimmingPoints + stats.divingPoints) / totalSplashes).toFixed(2) : "-";
+        return [
+          String(i + 1),
+          formatTeamRelayLabel(mt.team),
+          String(stats.swimmers.size),
+          String(stats.divers.size),
+          ptsPerSwim,
+          ptsPerDive,
+          ptsPerSplash,
+          mt.totalScore.toFixed(1),
+        ];
+      });
+      const alignAdvanced: ("left" | "right")[] = ["left", "left", "right", "right", "right", "right", "right", "right"];
+      table = formatTableForSlack({ headers, rows, align: alignAdvanced, maxColWidths: [5, 10, 10, 8, 10, 10, 12, 10] });
+    } else if (viewMode === "dailyGrid") {
+      title = `${baseTitle}Team Standings (Daily Grid${dailyGridSubView === "cumulative" ? ", Cumulative" : ""})${daySuffix}`;
+      const days = durationDays < 1 ? 1 : durationDays;
+      const headers = ["Rank", "Team", ...Array.from({ length: days }, (_, i) => `Day ${i + 1}`), "Total"];
+      const rows = sortedTeams.map((mt, i) => {
+        const dayPoints = pointsByTeamByDay.get(mt.teamId) ?? [];
+        let sum = 0;
+        const cells: string[] = [String(i + 1), formatTeamRelayLabel(mt.team)];
+        for (let d = 0; d < days; d++) {
+          sum += dayPoints[d] ?? 0;
+          cells.push((dailyGridSubView === "subScore" ? (dayPoints[d] ?? 0) : sum).toFixed(1));
+        }
+        cells.push(mt.totalScore.toFixed(1));
+        return cells;
+      });
+      const alignDaily: ("left" | "right")[] = ["left", "left", ...Array.from({ length: days }, () => "right"), "right"];
+      table = formatTableForSlack({ headers, rows, align: alignDaily, maxColWidths: [5, 10, ...Array(days).fill(8), 10] });
+    } else if (viewMode === "finalsBreakdown") {
+      title = `${baseTitle}Team Standings (Finals Breakdown)${daySuffix}`;
+      const days = durationDays < 1 ? 1 : durationDays;
+      const showDayCols = selectedDay == null && days > 1;
+      const headers = ["Rank", "Team"];
+      if (showDayCols) {
+        for (let d = 0; d < days; d++) headers.push(`D${d + 1}`);
+      }
+      headers.push("Total", "Entries", "A", "B", "C", "Non", "A%");
+      if (showDayCols) {
+        for (let d = 0; d < days; d++) headers.push(`D${d + 1} P/E`);
+      }
+      headers.push("Pts/Entry");
+      const rows = sortedFinalsTeams.map((mt, i) => {
+        const stats = finalsBreakdownStats.get(mt.teamId)!;
+        const roi = stats.entries > 0 ? ((stats.aFinalCount / stats.entries) * 100).toFixed(1) : "0.0";
+        const ptsPerEntry = stats.entries > 0 ? (stats.totalPoints / stats.entries).toFixed(2) : "-";
+        const r: string[] = [
+          String(i + 1),
+          formatTeamRelayLabel(mt.team),
+        ];
+        if (showDayCols) {
+          for (let d = 0; d < days; d++) r.push((stats.dayPoints[d] ?? 0).toFixed(1));
+        }
+        r.push(stats.totalPoints.toFixed(1), String(stats.entries), String(stats.aFinalCount), String(stats.bFinalCount), String(stats.cFinalCount), String(stats.nonScorerCount), `${roi}%`);
+        if (showDayCols) {
+          for (let d = 0; d < days; d++) {
+            const ent = stats.dayEntries[d] ?? 0;
+            r.push(ent > 0 ? ((stats.dayPoints[d] ?? 0) / ent).toFixed(2) : "-");
+          }
+        }
+        r.push(ptsPerEntry);
+        return r;
+      });
+      const nCols = headers.length;
+      const alignFinals: ("left" | "right")[] = ["left", "left", ...Array.from({ length: nCols - 2 }, () => "right")];
+      table = formatTableForSlack({ headers, rows, align: alignFinals });
+    } else {
+      return;
+    }
+
+    const full = buildSlackCopyString(table, title);
+    navigator.clipboard.writeText(full).then(
+      () => toast.success("Copied to clipboard"),
+      () => toast.error("Failed to copy")
     );
   };
 
@@ -416,9 +682,11 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                   ? dailyGridSubView === "cumulative"
                     ? "Cumulative points through each day"
                     : "Points scored each day"
-                  : selectedDay != null
-                    ? `Points scored on Day ${selectedDay} only`
-                    : "Current standings for all participating teams"}
+                  : viewMode === "finalsBreakdown"
+                    ? "A/B/C final and non-scorer counts, points per day, and points per entry"
+                    : selectedDay != null
+                      ? `Points scored on Day ${selectedDay} only`
+                      : "Current standings for all participating teams"}
             </CardDescription>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -471,8 +739,15 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                 {durationDays > 1 && (
                   <SelectItem value="dailyGrid" key="dailyGrid">Daily Grid</SelectItem>
                 )}
+                {scoringPlaces != null && (
+                  <SelectItem value="finalsBreakdown" key="finalsBreakdown">Finals Breakdown</SelectItem>
+                )}
               </SelectContent>
             </Select>
+            <Button type="button" variant="outline" size="sm" onClick={handleCopyForSlack} aria-label="Copy table for Slack">
+              <Copy className="h-4 w-4 mr-2" />
+              Copy for Slack
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -539,6 +814,98 @@ export function TeamStandings({ meetId, meetTeams, meetLineups, relayEntries = [
                 );
               })}
             </div>
+        ) : viewMode === "finalsBreakdown" ? (
+          // Finals Breakdown View
+          <div className="space-y-0 overflow-x-auto">
+            {scoringPlaces == null ? (
+              <div className="py-6 text-center text-slate-500 text-sm">
+                Finals breakdown requires meet scoring places.
+              </div>
+            ) : (() => {
+              const days = durationDays < 1 ? 1 : durationDays;
+              const showDayColumns = selectedDay == null && days > 1;
+              const gridCols = `40px 1fr ${showDayColumns ? Array.from({ length: days }, () => "minmax(0,1fr)").join(" ") + " " : ""}minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr)${showDayColumns ? " " + Array.from({ length: days }, () => "minmax(0,1fr)").join(" ") : ""} minmax(0,1fr)`;
+              return (
+                <>
+                  <div
+                    className="grid gap-2 border-b pb-1.5 min-w-[500px]"
+                    style={{ gridTemplateColumns: gridCols }}
+                  >
+                    <div className="font-semibold text-xs text-slate-600">Rank</div>
+                    {renderSortableHeader("Team", "team", "left")}
+                    {showDayColumns && Array.from({ length: days }, (_, i) => (
+                      <div key={`d${i}`} className="flex justify-end">
+                        {renderSortableHeader(`Day ${i + 1}`, `day-${i + 1}` as SortColumn, "right")}
+                      </div>
+                    ))}
+                    {renderSortableHeader("Total", "total", "right")}
+                    {renderSortableHeader("Entries", "finalsEntries", "right")}
+                    {renderSortableHeader("A Final", "finalsA", "right")}
+                    {renderSortableHeader("B Final", "finalsB", "right")}
+                    {renderSortableHeader("C Final", "finalsC", "right")}
+                    {renderSortableHeader("Non-Scorer", "finalsNon", "right")}
+                    {renderSortableHeader("A Final %", "finalsAFinalPct", "right")}
+                    {showDayColumns && Array.from({ length: days }, (_, i) => (
+                      <div key={`pte${i}`} className="flex justify-end">
+                        {renderSortableHeader(`Day ${i + 1} Pts/Entry`, `day-${i + 1}-pte` as SortColumn, "right")}
+                      </div>
+                    ))}
+                    {renderSortableHeader("Pts/Entry", "finalsPtsPerEntry", "right")}
+                  </div>
+                  {sortedFinalsTeams.map((meetTeam, index) => {
+                    const stats = finalsBreakdownStats.get(meetTeam.teamId)!;
+                    const roi = stats.entries > 0 ? ((stats.aFinalCount / stats.entries) * 100).toFixed(1) : "0.0";
+                    const ptsPerEntry = stats.entries > 0 ? stats.totalPoints / stats.entries : null;
+                    return (
+                      <div
+                        key={meetTeam.id}
+                        className="grid gap-2 items-center py-2 border-b last:border-0 hover:bg-slate-50 transition-colors min-w-[500px]"
+                        style={{ gridTemplateColumns: gridCols }}
+                      >
+                        <div className="font-bold text-sm">{index + 1}</div>
+                        <div
+                          className="font-semibold text-sm"
+                          style={meetTeam.team.primaryColor ? { color: meetTeam.team.primaryColor, fontWeight: 600 } : {}}
+                        >
+                          {formatTeamName(meetTeam.team.name, meetTeam.team.schoolName)}
+                        </div>
+                        {showDayColumns && stats.dayPoints.map((pts, i) => (
+                          <div key={i} className="text-right font-medium text-sm">{pts.toFixed(1)}</div>
+                        ))}
+                        <div className="text-right font-bold text-sm">{stats.totalPoints.toFixed(1)}</div>
+                        <div className="text-right font-medium text-sm">{stats.entries}</div>
+                        <div className="text-right">
+                          <Badge variant={stats.aFinalCount > 0 ? "default" : "outline"}>{stats.aFinalCount}</Badge>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant={stats.bFinalCount > 0 ? "secondary" : "outline"}>{stats.bFinalCount}</Badge>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline">{stats.cFinalCount}</Badge>
+                        </div>
+                        <div className="text-right">
+                          <Badge variant="outline">{stats.nonScorerCount}</Badge>
+                        </div>
+                        <div className="text-right font-medium text-sm">{roi}%</div>
+                        {showDayColumns && Array.from({ length: days }, (_, i) => {
+                          const ent = stats.dayEntries[i] ?? 0;
+                          const val = ent > 0 ? (stats.dayPoints[i] ?? 0) / ent : null;
+                          return (
+                            <div key={i} className="text-right font-medium text-sm">
+                              {val != null ? val.toFixed(2) : "-"}
+                            </div>
+                          );
+                        })}
+                        <div className="text-right font-medium text-sm">
+                          {ptsPerEntry != null ? ptsPerEntry.toFixed(2) : "-"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
+          </div>
         ) : viewMode === "standard" ? (
           // Standard View
           <div className="space-y-0">

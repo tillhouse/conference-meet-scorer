@@ -42,6 +42,7 @@ export default async function MeetDetailPage({
               name: true,
               schoolName: true,
               primaryColor: true,
+              shortName: true,
             },
           },
         },
@@ -59,6 +60,7 @@ export default async function MeetDetailPage({
                   name: true,
                   schoolName: true,
                   primaryColor: true,
+                  shortName: true,
                 },
               },
             },
@@ -74,6 +76,7 @@ export default async function MeetDetailPage({
               name: true,
               schoolName: true,
               primaryColor: true,
+              shortName: true,
             },
           },
           event: true,
@@ -408,6 +411,7 @@ export default async function MeetDetailPage({
       {/* Team Standings - View only; display by scoring mode (simulated vs real vs hybrid) */}
       <TeamStandings 
         meetId={id}
+        meetName={meet.name}
         meetTeams={displayMeetTeams} 
         meetLineups={displayMeetLineups}
         relayEntries={displayRelayEntries}
@@ -415,6 +419,7 @@ export default async function MeetDetailPage({
         eventDays={eventDays}
         projectedMeetTeams={projectedMeetTeamsForDelta}
         scoringMode={scoringMode}
+        scoringPlaces={meet.scoringPlaces}
       />
 
       {/* Performance vs Projection - show in Actual/Combined mode when real results exist */}
