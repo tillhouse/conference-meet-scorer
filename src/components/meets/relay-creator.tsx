@@ -407,6 +407,13 @@ export function RelayCreator({
       }
 
       toast.success(`${formatTeamName(team.name, team.schoolName)} relays saved successfully`);
+
+      // Re-run simulation so new/updated relay entries get simulatedPlace and simulatedPoints
+      const simRes = await fetch(`/api/meets/${meetId}/simulate`, { method: "POST" });
+      if (!simRes.ok) {
+        console.warn("Simulate after relay save failed (places may be stale)");
+      }
+
       // Update saved state
       setSavedRelayEntries(JSON.parse(JSON.stringify(relayEntries))); // Deep copy
       
