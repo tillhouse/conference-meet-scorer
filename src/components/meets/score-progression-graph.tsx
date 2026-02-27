@@ -144,6 +144,24 @@ export function ScoreProgressionGraph({
     return dataPoints;
   }, [events, meetLineups, relayEntries, teams, eventOrder]);
 
+  // Find the last event index that has results (at least one lineup or relay with points)
+  const lastEventWithResultsIndex = useMemo(() => {
+    const sortedEvents = sortEventsByOrder(events, eventOrder ?? null);
+    let lastIndex = -1;
+    sortedEvents.forEach((event, index) => {
+      const hasLineupResults = meetLineups.some(
+        (l) => l.eventId === event.id && l.points != null
+      );
+      const hasRelayResults = relayEntries.some(
+        (r) => r.eventId === event.id && r.points != null
+      );
+      if (hasLineupResults || hasRelayResults) {
+        lastIndex = index;
+      }
+    });
+    return lastIndex;
+  }, [events, meetLineups, relayEntries, eventOrder]);
+
   // Calculate points per event (non-cumulative)
   const perEventData = useMemo(() => {
     // Sort events according to custom order
@@ -199,8 +217,19 @@ export function ScoreProgressionGraph({
     return dataPoints;
   }, [events, meetLineups, relayEntries, teams, eventOrder]);
 
-  // Select data based on view mode
-  const chartData = viewMode === "cumulative" ? cumulativeData : perEventData;
+  // Truncate chart data to only show through the last event with results
+  const truncatedCumulativeData = useMemo(() => {
+    if (lastEventWithResultsIndex < 0) return cumulativeData;
+    return cumulativeData.slice(0, lastEventWithResultsIndex + 1);
+  }, [cumulativeData, lastEventWithResultsIndex]);
+
+  const truncatedPerEventData = useMemo(() => {
+    if (lastEventWithResultsIndex < 0) return perEventData;
+    return perEventData.slice(0, lastEventWithResultsIndex + 1);
+  }, [perEventData, lastEventWithResultsIndex]);
+
+  // Select data based on view mode (use truncated data so lines stop at last event with results)
+  const chartData = viewMode === "cumulative" ? truncatedCumulativeData : truncatedPerEventData;
 
   // Generate colors for teams (use primaryColor if available, otherwise generate)
   const teamColors = useMemo(() => {
